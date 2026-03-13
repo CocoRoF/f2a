@@ -61,6 +61,12 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
 }
 
 HF_PREFIXES = ("hf://", "huggingface://")
+HF_URL_PATTERN = re.compile(
+    r"^https?://huggingface\.co/datasets/"
+    r"(?P<dataset>[^/?#]+(?:/[^/?#]+)?)"
+    r"(?:/viewer(?:/(?P<config>[^/?#]+))?(?:/(?P<split>[^/?#]+))?)?",
+    re.IGNORECASE,
+)
 URL_PREFIXES = ("http://", "https://", "ftp://")
 
 
@@ -68,12 +74,13 @@ def detect_source_type(source: str) -> str:
     """Detect data source type from a source string.
 
     Detection priority:
-        1. URL prefix (http/https/ftp)
-        2. HuggingFace prefix (hf://, huggingface://)
-        3. HuggingFace org/dataset pattern
-        4. File extension matching
-        5. Multi-extension matching (e.g., .sas7bdat)
-        6. Content sniffing (if file exists)
+        1. HuggingFace URL (https://huggingface.co/datasets/...)
+        2. URL prefix (http/https/ftp)
+        3. HuggingFace prefix (hf://, huggingface://)
+        4. HuggingFace org/dataset pattern
+        5. File extension matching
+        6. Multi-extension matching (e.g., .sas7bdat)
+        7. Content sniffing (if file exists)
 
     Args:
         source: File path, URL, or HuggingFace address.
@@ -84,17 +91,21 @@ def detect_source_type(source: str) -> str:
     Raises:
         UnsupportedFormatError: If the format is not supported.
     """
-    # 1. URL detection
+    # 1. HuggingFace URL detection (before generic URL handling)
+    if HF_URL_PATTERN.match(source):
+        return "hf"
+
+    # 2. URL detection
     for prefix in URL_PREFIXES:
         if source.lower().startswith(prefix):
             return _detect_url_type(source)
 
-    # 2. HuggingFace address detection
+    # 3. HuggingFace prefix detection (hf://, huggingface://)
     for prefix in HF_PREFIXES:
         if source.startswith(prefix):
             return "hf"
 
-    # 3. org/dataset pattern detection (contains slash, no extension)
+    # 4. org/dataset pattern detection (contains slash, no extension)
     if "/" in source and not Path(source).suffix:
         parts = source.split("/")
         if len(parts) == 2 and all(
@@ -102,7 +113,7 @@ def detect_source_type(source: str) -> str:
         ):
             return "hf"
 
-    # 4. File extension-based detection
+    # 5. File extension-based detection
     path = Path(source)
     ext = path.suffix.lower()
 
@@ -114,7 +125,7 @@ def detect_source_type(source: str) -> str:
     if ext in SUPPORTED_EXTENSIONS:
         return SUPPORTED_EXTENSIONS[ext]
 
-    # 5. Attempt content sniffing if file exists
+    # 6. Attempt content sniffing if file exists
     if path.exists() and path.is_file():
         sniffed = _sniff_content(path)
         if sniffed:
@@ -247,7 +258,7 @@ def get_supported_formats() -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for ext, fmt in SUPPORTED_EXTENSIONS.items():
         result.setdefault(fmt, []).append(ext)
-    result["hf"] = ["hf://...", "org/dataset"]
+    result["hf"] = ["hf://...", "org/dataset", "https://huggingface.co/datasets/..."]
     result["url"] = ["http://...", "https://..."]
     return result
 

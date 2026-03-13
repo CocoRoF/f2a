@@ -23,7 +23,7 @@ import pandas as pd
 
 from f2a.utils.exceptions import DataLoadError, EmptyDataError, UnsupportedFormatError
 from f2a.utils.logging import get_logger
-from f2a.utils.validators import HF_PREFIXES, URL_PREFIXES, detect_source_type
+from f2a.utils.validators import HF_PREFIXES, HF_URL_PATTERN, URL_PREFIXES, detect_source_type
 
 logger = get_logger(__name__)
 
@@ -626,30 +626,103 @@ class DataLoader:
 
     @staticmethod
     def _load_huggingface(source: str, **kwargs: Any) -> pd.DataFrame:
-        """Load a HuggingFace dataset."""
+        """Load a HuggingFace dataset.
+
+        When neither ``config`` nor ``split`` is specified, all available
+        configs × splits are discovered and concatenated into a single
+        DataFrame with extra ``__subset__`` and ``__split__`` columns so the
+        caller can distinguish each partition.
+
+        To load only one specific partition, pass ``config`` and/or
+        ``split`` explicitly.
+        """
         try:
-            from datasets import load_dataset
+            from datasets import get_dataset_config_names, get_dataset_split_names, load_dataset
         except ImportError as exc:
             raise DataLoadError(
                 source,
                 reason="Install 'datasets' for HuggingFace support: pip install f2a[hf]",
             ) from exc
 
-        # Remove prefix
+        # Extract dataset name from various formats
         dataset_name = source
-        for prefix in HF_PREFIXES:
-            if dataset_name.startswith(prefix):
-                dataset_name = dataset_name[len(prefix) :]
-                break
 
-        split = kwargs.pop("split", "train")
+        # HuggingFace URL: https://huggingface.co/datasets/org/name[/viewer/config[/split]]
+        hf_match = HF_URL_PATTERN.match(dataset_name)
+        if hf_match:
+            dataset_name = hf_match.group("dataset")
+            # Extract config/split from /viewer/... path if present
+            url_config = hf_match.group("config")
+            url_split = hf_match.group("split")
+            if url_config and "config" not in kwargs:
+                kwargs["config"] = url_config
+            if url_split and "split" not in kwargs:
+                kwargs["split"] = url_split
+        else:
+            # hf:// or huggingface:// prefix
+            for prefix in HF_PREFIXES:
+                if dataset_name.startswith(prefix):
+                    dataset_name = dataset_name[len(prefix) :]
+                    break
+
+        # Strip trailing slashes
+        dataset_name = dataset_name.rstrip("/")
+
         config = kwargs.pop("config", None)
+        split = kwargs.pop("split", None)
 
+        # --- explicit single-partition mode ---
+        if config is not None or split is not None:
+            split = split or "train"
+            try:
+                if config:
+                    ds = load_dataset(dataset_name, config, split=split, **kwargs)
+                else:
+                    ds = load_dataset(dataset_name, split=split, **kwargs)
+                return ds.to_pandas()
+            except Exception as exc:
+                raise DataLoadError(source, reason=str(exc)) from exc
+
+        # --- auto-discover all configs × splits ---
         try:
-            if config:
-                ds = load_dataset(dataset_name, config, split=split, **kwargs)
-            else:
-                ds = load_dataset(dataset_name, split=split, **kwargs)
-            return ds.to_pandas()
-        except Exception as exc:
-            raise DataLoadError(source, reason=str(exc)) from exc
+            configs = get_dataset_config_names(dataset_name)
+        except Exception:
+            configs = [None]
+
+        if not configs:
+            configs = [None]
+
+        frames: list[pd.DataFrame] = []
+        for cfg in configs:
+            try:
+                if cfg is not None:
+                    splits = get_dataset_split_names(dataset_name, cfg)
+                else:
+                    splits = get_dataset_split_names(dataset_name)
+            except Exception:
+                splits = ["train"]
+
+            for sp in splits:
+                try:
+                    if cfg is not None:
+                        ds = load_dataset(dataset_name, cfg, split=sp, **kwargs)
+                    else:
+                        ds = load_dataset(dataset_name, split=sp, **kwargs)
+                    df_part = ds.to_pandas()
+                    df_part["__subset__"] = cfg or "default"
+                    df_part["__split__"] = sp
+                    frames.append(df_part)
+                    logger.info(
+                        "HF partition loaded: config=%s split=%s (%d rows)",
+                        cfg or "default", sp, len(df_part),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to load config=%s split=%s: %s",
+                        cfg, sp, exc,
+                    )
+
+        if not frames:
+            raise DataLoadError(source, reason="No loadable configs/splits found.")
+
+        return pd.concat(frames, ignore_index=True)

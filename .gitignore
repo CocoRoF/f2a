@@ -30,6 +30,9 @@ htmlcov/
 .coverage
 coverage.xml
 
+# Manual test folder
+test/
+
 # Output
 examples/output/
 examples/sample_data.csv

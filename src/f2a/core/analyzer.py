@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -83,16 +84,30 @@ class VizResult:
 
 
 @dataclass
+class SubsetReport:
+    """Analysis results for a single subset/split partition."""
+
+    subset: str
+    split: str
+    shape: tuple[int, int]
+    schema: DataSchema
+    stats: StatsResult
+    viz: VizResult
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
 class AnalysisReport:
     """Top-level container for analysis results.
 
     Attributes:
         dataset_name: Dataset name.
-        shape: ``(rows, columns)`` tuple.
-        schema: Data schema.
-        stats: Statistical analysis results.
-        viz: Visualization access object.
+        shape: ``(rows, columns)`` tuple (total across all subsets).
+        schema: Data schema (of the first / single partition).
+        stats: Statistical analysis results (of the first / single partition).
+        viz: Visualization access object (of the first / single partition).
         warnings: List of warnings found during analysis.
+        subsets: Per-subset/split reports (empty when only one partition).
     """
 
     dataset_name: str
@@ -101,6 +116,7 @@ class AnalysisReport:
     stats: StatsResult
     viz: VizResult
     warnings: list[str] = field(default_factory=list)
+    subsets: list[SubsetReport] = field(default_factory=list)
 
     def show(self) -> None:
         """Print analysis summary to console."""
@@ -108,22 +124,42 @@ class AnalysisReport:
         print(sep)
         print(f"  f2a Analysis Report: {self.dataset_name}")
         print(sep)
-        print(f"\n  Rows: {self.shape[0]:,}  |  Columns: {self.shape[1]}")
-        print(f"  Memory: {self.schema.memory_usage_mb} MB")
-        print(f"\n  Numeric: {len(self.schema.numeric_columns)}")
-        print(f"  Categorical: {len(self.schema.categorical_columns)}")
-        print(f"  Text: {len(self.schema.text_columns)}")
-        print(f"  Datetime: {len(self.schema.datetime_columns)}")
 
-        print(f"\n{'─' * 60}")
-        print("  Summary Statistics:")
-        print(self.stats.summary.to_string())
+        if self.subsets:
+            # Multi-subset mode
+            print(f"\n  Total Rows: {self.shape[0]:,}  |  Subsets: {len(self.subsets)}")
+            for sr in self.subsets:
+                print(f"\n{'-' * 60}")
+                print(f"  [{sr.subset} / {sr.split}]  {sr.shape[0]:,} rows x {sr.shape[1]} cols")
+                print(f"  Memory: {sr.schema.memory_usage_mb} MB")
+                print(f"  Numeric: {len(sr.schema.numeric_columns)} | "
+                      f"Categorical: {len(sr.schema.categorical_columns)} | "
+                      f"Text: {len(sr.schema.text_columns)} | "
+                      f"Datetime: {len(sr.schema.datetime_columns)}")
+                print()
+                print(sr.stats.summary.to_string())
+                if sr.warnings:
+                    print("\n  Warnings:")
+                    for w in sr.warnings:
+                        print(f"    - {w}")
+        else:
+            # Single-partition mode
+            print(f"\n  Rows: {self.shape[0]:,}  |  Columns: {self.shape[1]}")
+            print(f"  Memory: {self.schema.memory_usage_mb} MB")
+            print(f"\n  Numeric: {len(self.schema.numeric_columns)}")
+            print(f"  Categorical: {len(self.schema.categorical_columns)}")
+            print(f"  Text: {len(self.schema.text_columns)}")
+            print(f"  Datetime: {len(self.schema.datetime_columns)}")
 
-        if self.warnings:
-            print(f"\n{'─' * 60}")
-            print("  ⚠ Warnings:")
-            for w in self.warnings:
-                print(f"    • {w}")
+            print(f"\n{'-' * 60}")
+            print("  Summary Statistics:")
+            print(self.stats.summary.to_string())
+
+            if self.warnings:
+                print(f"\n{'-' * 60}")
+                print("  Warnings:")
+                for w in self.warnings:
+                    print(f"    - {w}")
 
         print(sep)
 
@@ -136,40 +172,77 @@ class AnalysisReport:
         Returns:
             Path to the saved HTML file.
         """
-        # Generate visualizations
-        figures: dict[str, plt.Figure] = {}
-        try:
-            figures["Distribution Histograms"] = self.viz.plot_distributions()
-        except Exception:
-            pass
-        try:
-            figures["Boxplots"] = self.viz.plot_boxplots()
-        except Exception:
-            pass
-        try:
-            figures["Correlation Heatmap"] = self.viz.plot_correlation()
-        except Exception:
-            pass
-        try:
-            figures["Missing Data"] = self.viz.plot_missing()
-        except Exception:
-            pass
-
         generator = ReportGenerator()
-        output_path = Path(output_dir) / f"{self.dataset_name}_report.html"
-        generator.save_html(
-            output_path=output_path,
-            dataset_name=self.dataset_name,
-            schema_summary=self.schema.summary_dict(),
-            stats_df=self.stats.summary,
-            figures=figures,
-            warnings=self.warnings,
-        )
+        safe_name = re.sub(r'[<>:"/\\|?*]', "_", self.dataset_name)
+        safe_name = safe_name.strip(". ")[:120] or "report"
+        output_path = Path(output_dir) / f"{safe_name}_report.html"
+
+        if self.subsets:
+            # Multi-subset mode: build per-subset section dicts
+            subset_sections: list[dict[str, Any]] = []
+            for sr in self.subsets:
+                figures: dict[str, plt.Figure] = {}
+                try:
+                    figures["Distribution Histograms"] = sr.viz.plot_distributions()
+                except Exception:
+                    pass
+                try:
+                    figures["Boxplots"] = sr.viz.plot_boxplots()
+                except Exception:
+                    pass
+                try:
+                    figures["Correlation Heatmap"] = sr.viz.plot_correlation()
+                except Exception:
+                    pass
+                try:
+                    figures["Missing Data"] = sr.viz.plot_missing()
+                except Exception:
+                    pass
+                subset_sections.append({
+                    "subset": sr.subset,
+                    "split": sr.split,
+                    "schema_summary": sr.schema.summary_dict(),
+                    "stats_df": sr.stats.summary,
+                    "figures": figures,
+                    "warnings": sr.warnings,
+                })
+            generator.save_html_multi(
+                output_path=output_path,
+                dataset_name=self.dataset_name,
+                sections=subset_sections,
+            )
+        else:
+            # Single-partition mode
+            figures: dict[str, plt.Figure] = {}
+            try:
+                figures["Distribution Histograms"] = self.viz.plot_distributions()
+            except Exception:
+                pass
+            try:
+                figures["Boxplots"] = self.viz.plot_boxplots()
+            except Exception:
+                pass
+            try:
+                figures["Correlation Heatmap"] = self.viz.plot_correlation()
+            except Exception:
+                pass
+            try:
+                figures["Missing Data"] = self.viz.plot_missing()
+            except Exception:
+                pass
+            generator.save_html(
+                output_path=output_path,
+                dataset_name=self.dataset_name,
+                schema_summary=self.schema.summary_dict(),
+                stats_df=self.stats.summary,
+                figures=figures,
+                warnings=self.warnings,
+            )
         return output_path
 
     def to_dict(self) -> dict[str, Any]:
         """Return analysis results as a dictionary."""
-        return {
+        result: dict[str, Any] = {
             "dataset_name": self.dataset_name,
             "shape": self.shape,
             "schema": self.schema.summary_dict(),
@@ -179,6 +252,19 @@ class AnalysisReport:
             else {},
             "warnings": self.warnings,
         }
+        if self.subsets:
+            result["subsets"] = [
+                {
+                    "subset": sr.subset,
+                    "split": sr.split,
+                    "shape": sr.shape,
+                    "schema": sr.schema.summary_dict(),
+                    "stats_summary": sr.stats.summary.to_dict(),
+                    "warnings": sr.warnings,
+                }
+                for sr in self.subsets
+            ]
+        return result
 
 
 class Analyzer:
@@ -209,16 +295,30 @@ class Analyzer:
         # 1. Load data
         df = self._loader.load(source, **kwargs)
 
-        # 2. Infer schema
+        # 2. Check for multi-subset HuggingFace data
+        has_partitions = "__subset__" in df.columns and "__split__" in df.columns
+
+        if has_partitions:
+            return self._run_multi_subset(source, df)
+
+        # Single-partition analysis
+        return self._run_single(source, df)
+
+    def _run_single(
+        self, source: str, df: pd.DataFrame
+    ) -> AnalysisReport:
+        """Run analysis on a single DataFrame."""
         schema = infer_schema(df)
         logger.info("Schema inference complete: %s", schema.summary_dict())
 
-        # 3. Statistical analysis
         warnings: list[str] = []
         stats = self._compute_stats(df, schema, warnings)
 
-        # 4. Assemble results
-        dataset_name = Path(source).stem if "/" not in source or "://" not in source else source
+        dataset_name = (
+            Path(source).stem
+            if "/" not in source or "://" not in source
+            else source
+        )
         viz = VizResult(_df=df, _schema=schema)
 
         report = AnalysisReport(
@@ -229,8 +329,63 @@ class Analyzer:
             viz=viz,
             warnings=warnings,
         )
-
         logger.info("Analysis complete: %s", source)
+        return report
+
+    def _run_multi_subset(
+        self, source: str, df: pd.DataFrame
+    ) -> AnalysisReport:
+        """Run analysis on a multi-subset HuggingFace DataFrame."""
+        groups = df.groupby(["__subset__", "__split__"], sort=False)
+
+        subset_reports: list[SubsetReport] = []
+        all_warnings: list[str] = []
+
+        for (subset_name, split_name), group_df in groups:
+            # Drop the metadata columns before analysis
+            part_df = group_df.drop(columns=["__subset__", "__split__"]).reset_index(drop=True)
+
+            schema = infer_schema(part_df)
+            warnings: list[str] = []
+            stats = self._compute_stats(part_df, schema, warnings)
+            viz = VizResult(_df=part_df, _schema=schema)
+
+            sr = SubsetReport(
+                subset=str(subset_name),
+                split=str(split_name),
+                shape=(len(part_df), len(part_df.columns)),
+                schema=schema,
+                stats=stats,
+                viz=viz,
+                warnings=warnings,
+            )
+            subset_reports.append(sr)
+            all_warnings.extend(
+                f"[{subset_name}/{split_name}] {w}" for w in warnings
+            )
+            logger.info(
+                "Subset analysis complete: %s/%s (%d rows × %d cols)",
+                subset_name, split_name, len(part_df), len(part_df.columns),
+            )
+
+        # Use the first subset for top-level schema/stats/viz
+        first = subset_reports[0]
+        total_rows = sum(sr.shape[0] for sr in subset_reports)
+        total_cols = first.shape[1]
+
+        report = AnalysisReport(
+            dataset_name=source,
+            shape=(total_rows, total_cols),
+            schema=first.schema,
+            stats=first.stats,
+            viz=first.viz,
+            warnings=all_warnings,
+            subsets=subset_reports,
+        )
+        logger.info(
+            "Multi-subset analysis complete: %s (%d subsets, %d total rows)",
+            source, len(subset_reports), total_rows,
+        )
         return report
 
     def _compute_stats(
