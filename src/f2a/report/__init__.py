@@ -1,4 +1,4 @@
-"""Report module — 분석 리포트 생성."""
+"""Report module — analysis report generation."""
 
 from f2a.report.generator import ReportGenerator
 

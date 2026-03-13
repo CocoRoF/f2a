@@ -1,4 +1,4 @@
-"""Core module — 데이터 로딩, 분석 오케스트레이션, 스키마 추론."""
+"""Core module — data loading, analysis orchestration, and schema inference."""
 
 from f2a.core.loader import DataLoader
 from f2a.core.analyzer import analyze, Analyzer

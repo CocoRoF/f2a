@@ -1,4 +1,4 @@
-"""데이터 스키마 추론 및 관리."""
+"""Data schema inference and management."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from f2a.utils.type_inference import ColumnType, infer_all_types
 
 @dataclass
 class ColumnInfo:
-    """개별 컬럼에 대한 메타 정보."""
+    """Metadata for an individual column."""
 
     name: str
     dtype: str
@@ -23,7 +23,7 @@ class ColumnInfo:
 
 @dataclass
 class DataSchema:
-    """데이터프레임 전체의 스키마 정보."""
+    """Schema information for an entire DataFrame."""
 
     n_rows: int
     n_cols: int
@@ -32,26 +32,26 @@ class DataSchema:
 
     @property
     def numeric_columns(self) -> list[str]:
-        """수치형 컬럼 이름 목록."""
+        """List of numeric column names."""
         return [c.name for c in self.columns if c.inferred_type == ColumnType.NUMERIC]
 
     @property
     def categorical_columns(self) -> list[str]:
-        """범주형 컬럼 이름 목록."""
+        """List of categorical column names."""
         return [c.name for c in self.columns if c.inferred_type == ColumnType.CATEGORICAL]
 
     @property
     def text_columns(self) -> list[str]:
-        """텍스트 컬럼 이름 목록."""
+        """List of text column names."""
         return [c.name for c in self.columns if c.inferred_type == ColumnType.TEXT]
 
     @property
     def datetime_columns(self) -> list[str]:
-        """일시 컬럼 이름 목록."""
+        """List of datetime column names."""
         return [c.name for c in self.columns if c.inferred_type == ColumnType.DATETIME]
 
     def summary_dict(self) -> dict[str, str | int | float]:
-        """스키마 요약을 딕셔너리로 반환합니다."""
+        """Return schema summary as a dictionary."""
         return {
             "rows": self.n_rows,
             "columns": self.n_cols,
@@ -64,13 +64,13 @@ class DataSchema:
 
 
 def infer_schema(df: pd.DataFrame) -> DataSchema:
-    """DataFrame으로부터 스키마를 추론합니다.
+    """Infer schema from a DataFrame.
 
     Args:
-        df: 분석 대상 DataFrame.
+        df: Target DataFrame to analyze.
 
     Returns:
-        추론된 :class:`DataSchema`.
+        Inferred :class:`DataSchema`.
     """
     type_map = infer_all_types(df)
     columns: list[ColumnInfo] = []

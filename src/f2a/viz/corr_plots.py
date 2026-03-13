@@ -1,4 +1,4 @@
-"""상관관계 시각화 모듈."""
+"""Correlation visualization module."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from f2a.viz.theme import DEFAULT_THEME, F2ATheme
 
 
 class CorrelationPlotter:
-    """상관관계 시각화를 생성합니다."""
+    """Generate correlation visualizations."""
 
     def __init__(
         self,
@@ -26,11 +26,11 @@ class CorrelationPlotter:
         self._theme = theme or DEFAULT_THEME
 
     def heatmap(self, method: str = "pearson", **kwargs: Any) -> plt.Figure:
-        """상관계수 히트맵을 생성합니다.
+        """Generate a correlation coefficient heatmap.
 
         Args:
-            method: 상관계수 방법 (``"pearson"`` 또는 ``"spearman"``).
-            **kwargs: ``seaborn.heatmap``에 전달할 추가 인자.
+            method: Correlation method (``"pearson"`` or ``"spearman"``).
+            **kwargs: Additional arguments passed to ``seaborn.heatmap``.
 
         Returns:
             matplotlib Figure.
@@ -38,7 +38,7 @@ class CorrelationPlotter:
         cols = self._schema.numeric_columns
         if len(cols) < 2:
             fig, ax = plt.subplots()
-            ax.text(0.5, 0.5, "상관 분석을 위한 수치형 컬럼이 부족합니다", ha="center", va="center")
+            ax.text(0.5, 0.5, "Not enough numeric columns for correlation analysis", ha="center", va="center")
             return fig
 
         corr = self._df[cols].corr(method=method)
@@ -53,17 +53,17 @@ class CorrelationPlotter:
         kwargs.setdefault("square", True)
 
         sns.heatmap(corr, ax=ax, **kwargs)
-        ax.set_title(f"상관계수 히트맵 ({method.title()})", fontsize=self._theme.title_size)
+        ax.set_title(f"Correlation Heatmap ({method.title()})", fontsize=self._theme.title_size)
         fig.tight_layout()
         return fig
 
     def pairplot(self, columns: list[str] | None = None, max_cols: int = 6, **kwargs: Any) -> sns.PairGrid:
-        """수치형 컬럼들의 페어플롯을 생성합니다.
+        """Generate pairplot for numeric columns.
 
         Args:
-            columns: 대상 컬럼. ``None``이면 수치형 상위 ``max_cols`` 개.
-            max_cols: 최대 컬럼 수.
-            **kwargs: ``seaborn.pairplot``에 전달할 추가 인자.
+            columns: Target columns. ``None`` for top ``max_cols`` numeric columns.
+            max_cols: Maximum number of columns.
+            **kwargs: Additional arguments passed to ``seaborn.pairplot``.
 
         Returns:
             seaborn PairGrid.
@@ -71,7 +71,7 @@ class CorrelationPlotter:
         cols = columns or self._schema.numeric_columns[:max_cols]
         if len(cols) < 2:
             fig, ax = plt.subplots()
-            ax.text(0.5, 0.5, "페어플롯을 위한 컬럼이 부족합니다", ha="center", va="center")
+            ax.text(0.5, 0.5, "Not enough columns for pairplot", ha="center", va="center")
             return fig
 
         kwargs.setdefault("diag_kind", "kde")

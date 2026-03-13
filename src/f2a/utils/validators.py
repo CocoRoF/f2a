@@ -1,4 +1,4 @@
-"""입력 유효성 검증 유틸리티."""
+"""Input validation utilities."""
 
 from __future__ import annotations
 
@@ -7,26 +7,26 @@ from pathlib import Path
 
 from f2a.utils.exceptions import UnsupportedFormatError
 
-# ── 지원 확장자 → 소스 타입 매핑 ────────────────────────────
-# 새로운 포맷 추가 시 여기에만 등록하면 자동 라우팅됩니다.
+# ── Supported extensions → source type mapping ────────
+# Register new formats here; they will be auto-routed.
 SUPPORTED_EXTENSIONS: dict[str, str] = {
-    # CSV / 구분자 텍스트
+    # CSV / delimited text
     ".csv": "csv",
     ".tsv": "tsv",
-    ".txt": "delimited",  # 구분자 자동 감지
+    ".txt": "delimited",  # auto-detect delimiter
     ".dat": "delimited",
     ".tab": "tsv",
-    # JSON 계열
+    # JSON family
     ".json": "json",
     ".jsonl": "jsonl",
     ".ndjson": "jsonl",
-    # 스프레드시트
+    # Spreadsheets
     ".xlsx": "excel",
     ".xls": "excel",
     ".xlsm": "excel",
     ".xlsb": "excel",
     ".ods": "ods",
-    # 바이너리 / 컬럼나 포맷
+    # Binary / columnar formats
     ".parquet": "parquet",
     ".pq": "parquet",
     ".feather": "feather",
@@ -39,24 +39,24 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".h5": "hdf5",
     ".pkl": "pickle",
     ".pickle": "pickle",
-    # 통계 패키지
+    # Statistical packages
     ".sas7bdat": "sas",
     ".xpt": "sas_xport",
     ".dta": "stata",
     ".sav": "spss",
     ".zsav": "spss",
     ".por": "spss",
-    # 데이터베이스
+    # Databases
     ".db": "sqlite",
     ".sqlite": "sqlite",
     ".sqlite3": "sqlite",
     ".ddb": "duckdb",
     ".duckdb": "duckdb",
-    # 마크업 / 구조적 텍스트
+    # Markup / structured text
     ".xml": "xml",
     ".html": "html",
     ".htm": "html",
-    # 고정 폭
+    # Fixed-width
     ".fwf": "fwf",
 }
 
@@ -65,36 +65,36 @@ URL_PREFIXES = ("http://", "https://", "ftp://")
 
 
 def detect_source_type(source: str) -> str:
-    """소스 문자열로부터 데이터 소스 타입을 감지합니다.
+    """Detect data source type from a source string.
 
-    감지 우선순위:
-        1. URL 프리픽스 (http/https/ftp)
-        2. HuggingFace 프리픽스 (hf://, huggingface://)
-        3. HuggingFace org/dataset 패턴
-        4. 파일 확장자 매칭
-        5. 멀티 확장자 매칭 (예: .sas7bdat → 마지막 `.` 이후와 전체 매칭)
-        6. 콘텐츠 스니핑 (파일이 존재하는 경우)
+    Detection priority:
+        1. URL prefix (http/https/ftp)
+        2. HuggingFace prefix (hf://, huggingface://)
+        3. HuggingFace org/dataset pattern
+        4. File extension matching
+        5. Multi-extension matching (e.g., .sas7bdat)
+        6. Content sniffing (if file exists)
 
     Args:
-        source: 파일 경로, URL 또는 HuggingFace 주소.
+        source: File path, URL, or HuggingFace address.
 
     Returns:
-        소스 타입 문자열 (``"csv"``, ``"json"``, ``"hf"``, ``"url"`` 등).
+        Source type string (``"csv"``, ``"json"``, ``"hf"``, ``"url"``, etc.).
 
     Raises:
-        UnsupportedFormatError: 지원하지 않는 포맷인 경우.
+        UnsupportedFormatError: If the format is not supported.
     """
-    # 1. URL 감지
+    # 1. URL detection
     for prefix in URL_PREFIXES:
         if source.lower().startswith(prefix):
             return _detect_url_type(source)
 
-    # 2. HuggingFace 주소 감지
+    # 2. HuggingFace address detection
     for prefix in HF_PREFIXES:
         if source.startswith(prefix):
             return "hf"
 
-    # 3. org/dataset 패턴 감지 (슬래시 포함, 확장자 없음)
+    # 3. org/dataset pattern detection (contains slash, no extension)
     if "/" in source and not Path(source).suffix:
         parts = source.split("/")
         if len(parts) == 2 and all(
@@ -102,11 +102,11 @@ def detect_source_type(source: str) -> str:
         ):
             return "hf"
 
-    # 4. 파일 확장자 기반 감지
+    # 4. File extension-based detection
     path = Path(source)
     ext = path.suffix.lower()
 
-    # 멀티 확장자 처리 (.tar.gz, .sas7bdat 등)
+    # Multi-extension handling (.tar.gz, .sas7bdat, etc.)
     full_suffixes = "".join(path.suffixes).lower()
     if full_suffixes in SUPPORTED_EXTENSIONS:
         return SUPPORTED_EXTENSIONS[full_suffixes]
@@ -114,7 +114,7 @@ def detect_source_type(source: str) -> str:
     if ext in SUPPORTED_EXTENSIONS:
         return SUPPORTED_EXTENSIONS[ext]
 
-    # 5. 파일이 존재하면 콘텐츠 스니핑 시도
+    # 5. Attempt content sniffing if file exists
     if path.exists() and path.is_file():
         sniffed = _sniff_content(path)
         if sniffed:
@@ -124,9 +124,9 @@ def detect_source_type(source: str) -> str:
 
 
 def _detect_url_type(url: str) -> str:
-    """URL에서 파일 타입을 추출합니다.
+    """Extract file type from URL.
 
-    URL 경로의 확장자를 확인하고, 없으면 ``"url_csv"`` 로 기본 처리합니다.
+    Check the URL path extension; defaults to ``"url_auto"`` if none found.
     """
     from urllib.parse import urlparse
 
@@ -137,19 +137,19 @@ def _detect_url_type(url: str) -> str:
     if ext in SUPPORTED_EXTENSIONS:
         return SUPPORTED_EXTENSIONS[ext]
 
-    # 확장자가 없으면 URL로 표시하여 CSV 시도 (가장 흔한 경우)
+    # No extension found — mark as URL for auto-detection
     return "url_auto"
 
 
 def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
-    """파일의 처음 몇 바이트를 읽어 포맷을 추측합니다.
+    """Read the first few bytes of a file to guess its format.
 
     Args:
-        path: 파일 경로.
-        peek_bytes: 읽을 바이트 수.
+        path: File path.
+        peek_bytes: Number of bytes to read.
 
     Returns:
-        감지된 소스 타입 문자열 또는 None.
+        Detected source type string, or None.
     """
     try:
         with open(path, "rb") as f:
@@ -157,7 +157,7 @@ def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
     except (OSError, PermissionError):
         return None
 
-    # ── 바이너리 매직 넘버 ──
+    # ── Binary magic numbers ──
     # Parquet: "PAR1"
     if header[:4] == b"PAR1":
         return "parquet"
@@ -182,13 +182,13 @@ def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
     if header[:16] == b"SQLite format 3\x00":
         return "sqlite"
 
-    # Pickle: 여러 프로토콜 매직
+    # Pickle: various protocol magic bytes
     if header[:2] in (b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05"):
         return "pickle"
 
     # Excel XLSX (ZIP): "PK\x03\x04"
     if header[:4] == b"PK\x03\x04":
-        # ZIP 파일 — XLSX일 수 있음
+        # ZIP file — could be XLSX
         if b"xl/" in header or b"[Content_Types].xml" in header:
             return "excel"
         return None
@@ -197,7 +197,7 @@ def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
     if header[:4] == b"\xd0\xcf\x11\xe0":
         return "excel"
 
-    # ── 텍스트 기반 스니핑 ──
+    # ── Text-based sniffing ──
     try:
         text = header.decode("utf-8", errors="replace")
     except Exception:
@@ -207,7 +207,7 @@ def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
 
     # JSON
     if text_stripped.startswith(("{", "[")):
-        # JSONL: 여러 줄의 JSON
+        # JSONL: multi-line JSON objects
         lines = text_stripped.split("\n", 5)
         if len(lines) > 1 and all(
             line.strip().startswith("{") for line in lines[:3] if line.strip()
@@ -221,7 +221,7 @@ def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
             return "html"
         return "xml"
 
-    # CSV vs TSV — 구분자 감지
+    # CSV vs TSV — delimiter detection
     if "\t" in text_stripped:
         tab_count = text_stripped.count("\t")
         comma_count = text_stripped.count(",")
@@ -231,7 +231,7 @@ def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
     if "," in text_stripped:
         return "csv"
 
-    # 기본적으로 구분자 텍스트로 시도
+    # Default: try as delimited text
     if "\n" in text_stripped and len(text_stripped.split("\n")) > 1:
         return "delimited"
 
@@ -239,10 +239,10 @@ def _sniff_content(path: Path, peek_bytes: int = 8192) -> str | None:
 
 
 def get_supported_formats() -> dict[str, list[str]]:
-    """지원하는 포맷과 확장자 목록을 반환합니다.
+    """Return supported formats and their file extensions.
 
     Returns:
-        포맷 이름 → 확장자 리스트 매핑.
+        Format name → extension list mapping.
     """
     result: dict[str, list[str]] = {}
     for ext, fmt in SUPPORTED_EXTENSIONS.items():
@@ -253,17 +253,17 @@ def get_supported_formats() -> dict[str, list[str]]:
 
 
 def validate_source(source: str) -> str:
-    """소스 문자열을 검증하고 정규화합니다.
+    """Validate and normalize a source string.
 
     Args:
-        source: 입력 소스 문자열.
+        source: Input source string.
 
     Returns:
-        정규화된 소스 문자열.
+        Normalized source string.
 
     Raises:
-        ValueError: 빈 문자열인 경우.
+        ValueError: If the source string is empty.
     """
     if not source or not source.strip():
-        raise ValueError("소스 문자열이 비어 있습니다.")
+        raise ValueError("Source string is empty.")
     return source.strip()

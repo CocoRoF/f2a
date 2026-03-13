@@ -1,4 +1,4 @@
-"""분포 분석 모듈."""
+"""Distribution analysis module."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from f2a.core.schema import DataSchema
 
 
 class DistributionStats:
-    """수치형 컬럼의 분포 특성을 분석합니다.
+    """Analyze distribution characteristics of numeric columns.
 
     Args:
-        df: 분석 대상 DataFrame.
-        schema: 데이터 스키마.
+        df: Target DataFrame to analyze.
+        schema: Data schema.
     """
 
     def __init__(self, df: pd.DataFrame, schema: DataSchema) -> None:
@@ -22,10 +22,10 @@ class DistributionStats:
         self._schema = schema
 
     def analyze(self) -> pd.DataFrame:
-        """수치형 컬럼들의 분포 정보를 반환합니다.
+        """Return distribution information for numeric columns.
 
         Returns:
-            왜도, 첨도, 정규성 검정 결과를 포함한 DataFrame.
+            DataFrame containing skewness, kurtosis, and normality test results.
         """
         cols = self._schema.numeric_columns
         if not cols:
@@ -41,14 +41,14 @@ class DistributionStats:
         return pd.DataFrame(rows).set_index("column") if rows else pd.DataFrame()
 
     def quantile_table(self, quantiles: list[float] | None = None) -> pd.DataFrame:
-        """수치형 컬럼들의 분위수 테이블을 반환합니다.
+        """Return quantile table for numeric columns.
 
         Args:
-            quantiles: 계산할 분위수 리스트. 기본값은
+            quantiles: List of quantiles to compute. Defaults to
                 ``[0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95]``.
 
         Returns:
-            분위수 DataFrame.
+            Quantile DataFrame.
         """
         if quantiles is None:
             quantiles = [0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95]
@@ -61,11 +61,11 @@ class DistributionStats:
 
     @staticmethod
     def _analyze_column(col: str, series: pd.Series) -> dict:
-        """단일 수치형 컬럼의 분포를 분석합니다."""
+        """Analyze the distribution of a single numeric column."""
         skew = float(series.skew())
         kurt = float(series.kurtosis())
 
-        # 정규성 검정
+        # Normality test
         normality_p: float | None = None
         normality_test: str = "n/a"
 

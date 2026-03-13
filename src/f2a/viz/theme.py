@@ -1,4 +1,4 @@
-"""시각화 테마 및 스타일 관리."""
+"""Visualization theme and style management."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import seaborn as sns
 
 
 def _get_korean_font() -> str | None:
-    """시스템에서 사용 가능한 한글 폰트를 찾습니다."""
+    """Find an available Korean font on the system."""
     system = platform.system()
     candidates: list[str] = []
 
@@ -31,15 +31,15 @@ def _get_korean_font() -> str | None:
 
 @dataclass
 class F2ATheme:
-    """f2a 시각화 테마 설정.
+    """f2a visualization theme configuration.
 
     Attributes:
-        palette: seaborn 컬러 팔레트 이름.
-        figsize: 기본 Figure 크기.
-        title_size: 제목 폰트 크기.
-        label_size: 라벨 폰트 크기.
-        dpi: 출력 해상도.
-        style: seaborn 스타일.
+        palette: Seaborn color palette name.
+        figsize: Default figure size.
+        title_size: Title font size.
+        label_size: Label font size.
+        dpi: Output resolution.
+        style: Seaborn style.
     """
 
     palette: str = "husl"
@@ -53,7 +53,7 @@ class F2ATheme:
     _colors: list[str] = field(default_factory=list)
 
     def apply(self) -> None:
-        """현재 테마를 matplotlib/seaborn에 적용합니다."""
+        """Apply the current theme to matplotlib/seaborn."""
         sns.set_theme(
             style=self.style,
             context=self.context,
@@ -68,18 +68,18 @@ class F2ATheme:
             "axes.labelsize": self.label_size,
         }
 
-        # 한글 폰트 자동 설정
+        # Auto-configure Korean font
         korean_font = _get_korean_font()
         if korean_font:
             rc_params["font.family"] = korean_font
-            rc_params["axes.unicode_minus"] = False  # 마이너스 기호 깨짐 방지
+            rc_params["axes.unicode_minus"] = False  # Prevent minus sign rendering issues
 
         plt.rcParams.update(rc_params)
 
     def get_colors(self, n: int = 10) -> list[str]:
-        """팔레트에서 n개의 색상을 반환합니다."""
+        """Return n colors from the palette."""
         return [str(c) for c in sns.color_palette(self.palette, n)]
 
 
-# 기본 테마 인스턴스
+# Default theme instance
 DEFAULT_THEME = F2ATheme()

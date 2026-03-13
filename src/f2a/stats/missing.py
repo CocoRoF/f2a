@@ -1,4 +1,4 @@
-"""결측치 분석 모듈."""
+"""Missing data analysis module."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from f2a.core.schema import DataSchema
 
 
 class MissingStats:
-    """결측치 패턴을 분석합니다.
+    """Analyze missing data patterns.
 
     Args:
-        df: 분석 대상 DataFrame.
-        schema: 데이터 스키마.
+        df: Target DataFrame to analyze.
+        schema: Data schema.
     """
 
     def __init__(self, df: pd.DataFrame, schema: DataSchema) -> None:
@@ -20,10 +20,10 @@ class MissingStats:
         self._schema = schema
 
     def column_summary(self) -> pd.DataFrame:
-        """컬럼별 결측치 요약을 반환합니다.
+        """Return per-column missing data summary.
 
         Returns:
-            각 컬럼의 결측 수, 비율, 타입 정보를 포함한 DataFrame.
+            DataFrame with missing count, ratio, and dtype per column.
         """
         rows: list[dict] = []
         for col_info in self._schema.columns:
@@ -41,10 +41,10 @@ class MissingStats:
         return result.sort_values("missing_count", ascending=False)
 
     def row_missing_distribution(self) -> pd.DataFrame:
-        """행 단위 결측 수 분포를 반환합니다.
+        """Return per-row missing count distribution.
 
         Returns:
-            행별 결측 수의 빈도표.
+            Frequency table of missing counts per row.
         """
         row_missing = self._df.isna().sum(axis=1)
         dist = row_missing.value_counts().sort_index()
@@ -57,17 +57,17 @@ class MissingStats:
         )
 
     def missing_matrix(self) -> pd.DataFrame:
-        """결측치 매트릭스 (boolean)를 반환합니다.
+        """Return missing data matrix (boolean).
 
-        시각화에 사용되는 결측 여부 행렬입니다.
+        Boolean matrix used for visualizing missing data patterns.
 
         Returns:
-            결측이면 True인 boolean DataFrame.
+            Boolean DataFrame where True indicates missing.
         """
         return self._df.isna()
 
     def total_missing_ratio(self) -> float:
-        """전체 결측 비율을 반환합니다."""
+        """Return the overall missing data ratio."""
         total_cells = self._df.shape[0] * self._df.shape[1]
         if total_cells == 0:
             return 0.0

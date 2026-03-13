@@ -1,4 +1,4 @@
-"""기술 통계 분석 모듈."""
+"""Descriptive statistics analysis module."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from f2a.utils.type_inference import ColumnType
 
 
 class DescriptiveStats:
-    """기술 통계량을 계산합니다.
+    """Compute descriptive statistics.
 
     Args:
-        df: 분석 대상 DataFrame.
-        schema: 데이터 스키마.
+        df: Target DataFrame to analyze.
+        schema: Data schema.
     """
 
     def __init__(self, df: pd.DataFrame, schema: DataSchema) -> None:
@@ -22,12 +22,12 @@ class DescriptiveStats:
         self._schema = schema
 
     def summary(self) -> pd.DataFrame:
-        """전체 요약 통계를 반환합니다.
+        """Return overall summary statistics.
 
-        수치형과 범주형 컬럼을 모두 포함하는 통합 요약표를 생성합니다.
+        Generates a unified summary table covering both numeric and categorical columns.
 
         Returns:
-            요약 통계 DataFrame.
+            Summary statistics DataFrame.
         """
         rows: list[dict] = []
         for col_info in self._schema.columns:
@@ -51,14 +51,14 @@ class DescriptiveStats:
         return pd.DataFrame(rows).set_index("column")
 
     def numeric_summary(self) -> pd.DataFrame:
-        """수치형 컬럼만의 요약 통계를 반환합니다."""
+        """Return summary statistics for numeric columns only."""
         cols = self._schema.numeric_columns
         if not cols:
             return pd.DataFrame()
         return self._df[cols].describe().T
 
     def categorical_summary(self) -> pd.DataFrame:
-        """범주형 컬럼만의 요약 통계를 반환합니다."""
+        """Return summary statistics for categorical columns only."""
         cols = self._schema.categorical_columns
         if not cols:
             return pd.DataFrame()
@@ -78,11 +78,11 @@ class DescriptiveStats:
             )
         return pd.DataFrame(rows).set_index("column")
 
-    # ── 내부 헬퍼 ───────────────────────────────────────
+    # ── Internal helpers ────────────────────────────────
 
     @staticmethod
     def _numeric_stats(series: pd.Series) -> dict:
-        """수치형 컬럼의 통계를 딕셔너리로 반환합니다."""
+        """Return numeric column statistics as a dictionary."""
         desc = series.describe()
         q1 = float(desc.get("25%", np.nan))
         q3 = float(desc.get("75%", np.nan))
@@ -100,7 +100,7 @@ class DescriptiveStats:
 
     @staticmethod
     def _categorical_stats(series: pd.Series) -> dict:
-        """범주형 컬럼의 통계를 딕셔너리로 반환합니다."""
+        """Return categorical column statistics as a dictionary."""
         vc = series.value_counts()
         top_val = vc.index[0] if len(vc) > 0 else None
         return {

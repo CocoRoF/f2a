@@ -1,1 +1,1 @@
-"""Utilities module — 타입 추론, 유효성 검증, 로깅."""
+"""Utilities module — type inference, validation, and logging."""

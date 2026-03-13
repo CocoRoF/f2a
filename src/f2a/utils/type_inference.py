@@ -1,4 +1,4 @@
-"""데이터 타입 자동 추론 유틸리티."""
+"""Automatic data type inference utilities."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pandas as pd
 
 
 class ColumnType(str, Enum):
-    """컬럼 타입 분류."""
+    """Column type classification."""
 
     NUMERIC = "numeric"
     CATEGORICAL = "categorical"
@@ -17,41 +17,41 @@ class ColumnType(str, Enum):
     BOOLEAN = "boolean"
 
 
-# 카테고리로 간주할 유니크 값 비율 상한
+# Max unique value ratio to consider a column categorical
 _CATEGORICAL_RATIO_THRESHOLD = 0.05  # 5%
-# 카테고리로 간주할 절대 유니크 수 상한
+# Max absolute unique count to consider a column categorical
 _CATEGORICAL_UNIQUE_THRESHOLD = 50
-# 텍스트로 간주할 평균 문자열 길이 하한
+# Min average string length to consider a column text
 _TEXT_LENGTH_THRESHOLD = 50
 
 
 def infer_column_type(series: pd.Series) -> ColumnType:
-    """단일 컬럼의 의미론적 타입을 추론합니다.
+    """Infer the semantic type of a single column.
 
     Args:
-        series: 분석 대상 pandas Series.
+        series: Target pandas Series to analyze.
 
     Returns:
-        추론된 :class:`ColumnType`.
+        Inferred :class:`ColumnType`.
     """
-    # boolean 체크
+    # Boolean check
     if series.dtype == "bool" or set(series.dropna().unique()) <= {True, False, 0, 1}:
         return ColumnType.BOOLEAN
 
-    # datetime 체크
+    # Datetime check
     if pd.api.types.is_datetime64_any_dtype(series):
         return ColumnType.DATETIME
 
-    # 수치형 체크
+    # Numeric check
     if pd.api.types.is_numeric_dtype(series):
         n_unique = series.nunique()
         n_total = len(series)
-        # 유니크 값이 매우 적으면 카테고리로 간주
+        # Treat as categorical if very few unique values
         if n_unique <= 10 and n_total > 100:
             return ColumnType.CATEGORICAL
         return ColumnType.NUMERIC
 
-    # 문자열 계열
+    # String types
     if pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series):
         n_unique = series.nunique()
         n_total = len(series.dropna())
@@ -59,14 +59,14 @@ def infer_column_type(series: pd.Series) -> ColumnType:
         if n_total == 0:
             return ColumnType.TEXT
 
-        # datetime 파싱 시도
+        # Attempt datetime parsing
         try:
             pd.to_datetime(series.dropna().head(20))
             return ColumnType.DATETIME
         except (ValueError, TypeError):
             pass
 
-        # 유니크 비율 및 문자열 길이로 텍스트 vs 카테고리 결정
+        # Determine text vs categorical by unique ratio and string length
         ratio = n_unique / n_total if n_total > 0 else 1.0
         avg_len = series.dropna().astype(str).str.len().mean()
 
@@ -80,12 +80,12 @@ def infer_column_type(series: pd.Series) -> ColumnType:
 
 
 def infer_all_types(df: pd.DataFrame) -> dict[str, ColumnType]:
-    """DataFrame의 모든 컬럼 타입을 추론합니다.
+    """Infer types for all columns in a DataFrame.
 
     Args:
-        df: 분석 대상 DataFrame.
+        df: Target DataFrame to analyze.
 
     Returns:
-        컬럼명 → :class:`ColumnType` 매핑.
+        Column name → :class:`ColumnType` mapping.
     """
     return {col: infer_column_type(df[col]) for col in df.columns}

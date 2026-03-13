@@ -1,9 +1,9 @@
-"""시각화 테스트."""
+"""Visualization tests."""
 
 from __future__ import annotations
 
 import matplotlib
-matplotlib.use("Agg")  # 테스트 시 GUI 없이 렌더링
+matplotlib.use("Agg")  # Render without GUI during tests
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,7 +16,7 @@ from f2a.viz.missing_plots import MissingPlotter
 
 
 class TestBasicPlotter:
-    """BasicPlotter 테스트."""
+    """BasicPlotter tests."""
 
     def test_histograms(self, sample_numeric_df: pd.DataFrame) -> None:
         schema = infer_schema(sample_numeric_df)
@@ -41,7 +41,7 @@ class TestBasicPlotter:
 
 
 class TestCorrelationPlotter:
-    """CorrelationPlotter 테스트."""
+    """CorrelationPlotter tests."""
 
     def test_heatmap(self, sample_numeric_df: pd.DataFrame) -> None:
         schema = infer_schema(sample_numeric_df)
@@ -52,7 +52,7 @@ class TestCorrelationPlotter:
 
 
 class TestMissingPlotter:
-    """MissingPlotter 테스트."""
+    """MissingPlotter tests."""
 
     def test_bar(self, sample_mixed_df: pd.DataFrame) -> None:
         schema = infer_schema(sample_mixed_df)

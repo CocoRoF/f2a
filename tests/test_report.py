@@ -1,4 +1,4 @@
-"""리포트 생성 테스트."""
+"""Report generation tests."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from f2a.core.analyzer import analyze
 
 
 class TestAnalysisReport:
-    """통합 분석 리포트 테스트."""
+    """Integration analysis report tests."""
 
     def test_analyze_csv(self, sample_csv_path: Path) -> None:
         report = analyze(str(sample_csv_path))
@@ -26,14 +26,14 @@ class TestAnalysisReport:
         report = analyze(str(sample_csv_path))
         report.show()
         captured = capsys.readouterr()
-        assert "f2a 분석 리포트" in captured.out
+        assert "f2a Analysis Report" in captured.out
 
     def test_report_to_html(self, sample_csv_path: Path, tmp_path: Path) -> None:
         report = analyze(str(sample_csv_path))
         html_path = report.to_html(str(tmp_path))
         assert html_path.exists()
         content = html_path.read_text(encoding="utf-8")
-        assert "f2a 분석 리포트" in content
+        assert "f2a Analysis Report" in content
 
     def test_report_to_dict(self, sample_csv_path: Path) -> None:
         report = analyze(str(sample_csv_path))

@@ -1,4 +1,4 @@
-"""상관 분석 모듈."""
+"""Correlation analysis module."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ logger = get_logger(__name__)
 
 
 class CorrelationStats:
-    """컬럼 간 상관관계를 분석합니다.
+    """Analyze correlations between columns.
 
     Args:
-        df: 분석 대상 DataFrame.
-        schema: 데이터 스키마.
+        df: Target DataFrame to analyze.
+        schema: Data schema.
     """
 
     def __init__(self, df: pd.DataFrame, schema: DataSchema) -> None:
@@ -24,21 +24,21 @@ class CorrelationStats:
         self._schema = schema
 
     def pearson(self) -> pd.DataFrame:
-        """Pearson 상관계수 행렬을 반환합니다."""
+        """Return the Pearson correlation matrix."""
         cols = self._schema.numeric_columns
         if len(cols) < 2:
             return pd.DataFrame()
         return self._df[cols].corr(method="pearson")
 
     def spearman(self) -> pd.DataFrame:
-        """Spearman 순위 상관계수 행렬을 반환합니다."""
+        """Return the Spearman rank correlation matrix."""
         cols = self._schema.numeric_columns
         if len(cols) < 2:
             return pd.DataFrame()
         return self._df[cols].corr(method="spearman")
 
     def cramers_v_matrix(self) -> pd.DataFrame:
-        """범주형 컬럼 간 Cramér's V 행렬을 반환합니다."""
+        """Return the Cramér's V matrix for categorical columns."""
         cols = self._schema.categorical_columns
         if len(cols) < 2:
             return pd.DataFrame()
@@ -55,13 +55,13 @@ class CorrelationStats:
         return matrix
 
     def high_correlations(self, threshold: float = 0.9) -> list[tuple[str, str, float]]:
-        """높은 상관관계 쌍을 반환합니다.
+        """Return pairs with high correlation.
 
         Args:
-            threshold: 상관계수 절대값 임계치.
+            threshold: Absolute correlation coefficient threshold.
 
         Returns:
-            ``(col_a, col_b, correlation)`` 튜플 리스트.
+            List of ``(col_a, col_b, correlation)`` tuples.
         """
         corr = self.pearson()
         if corr.empty:
@@ -77,18 +77,18 @@ class CorrelationStats:
 
         if pairs:
             logger.warning(
-                "다중공선성 경고: %d쌍의 컬럼이 |r| ≥ %.2f 입니다.",
+                "Multicollinearity warning: %d column pairs have |r| >= %.2f.",
                 len(pairs),
                 threshold,
             )
 
         return pairs
 
-    # ── 내부 헬퍼 ───────────────────────────────────────
+    # ── Internal helpers ────────────────────────────────
 
     @staticmethod
     def _cramers_v(x: pd.Series, y: pd.Series) -> float:
-        """두 범주형 변수 간 Cramér's V를 계산합니다."""
+        """Compute Cramér's V between two categorical variables."""
         confusion = pd.crosstab(x, y)
         n = confusion.sum().sum()
         if n == 0:

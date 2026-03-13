@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "f2a"
-dynamic = ["version"]
-description = "File to Analysis — 데이터 소스를 입력받아 기술 통계 분석 및 시각화를 자동 수행하는 라이브러리"
+version = "0.1.0"
+description = "File to Analysis — Automatically perform descriptive statistical analysis and visualization from any data source"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -63,9 +63,6 @@ Homepage = "https://github.com/CocoRoF/f2a"
 Documentation = "https://github.com/CocoRoF/f2a#readme"
 Repository = "https://github.com/CocoRoF/f2a"
 Issues = "https://github.com/CocoRoF/f2a/issues"
-
-[tool.hatch.version]
-path = "src/f2a/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/f2a"]

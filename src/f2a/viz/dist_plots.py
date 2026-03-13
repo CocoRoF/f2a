@@ -1,4 +1,4 @@
-"""분포 시각화 모듈."""
+"""Distribution visualization module."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from f2a.viz.theme import DEFAULT_THEME, F2ATheme
 
 
 class DistributionPlotter:
-    """분포 관련 시각화를 생성합니다."""
+    """Generate distribution-related visualizations."""
 
     def __init__(
         self,
@@ -26,11 +26,11 @@ class DistributionPlotter:
         self._theme = theme or DEFAULT_THEME
 
     def violin_plots(self, columns: list[str] | None = None, **kwargs: Any) -> plt.Figure:
-        """수치형 컬럼들의 바이올린 플롯을 생성합니다."""
+        """Generate violin plots for numeric columns."""
         cols = columns or self._schema.numeric_columns
         if not cols:
             fig, ax = plt.subplots()
-            ax.text(0.5, 0.5, "수치형 컬럼이 없습니다", ha="center", va="center")
+            ax.text(0.5, 0.5, "No numeric columns found", ha="center", va="center")
             return fig
 
         n = len(cols)
@@ -48,16 +48,16 @@ class DistributionPlotter:
         for idx in range(n, len(list(axes))):
             axes[idx].set_visible(False)
 
-        fig.suptitle("바이올린 플롯", fontsize=self._theme.title_size + 2, y=1.02)
+        fig.suptitle("Violin Plots", fontsize=self._theme.title_size + 2, y=1.02)
         fig.tight_layout()
         return fig
 
     def kde_plots(self, columns: list[str] | None = None, **kwargs: Any) -> plt.Figure:
-        """수치형 컬럼들의 KDE(커널 밀도 추정) 플롯을 생성합니다."""
+        """Generate KDE (Kernel Density Estimation) plots for numeric columns."""
         cols = columns or self._schema.numeric_columns
         if not cols:
             fig, ax = plt.subplots()
-            ax.text(0.5, 0.5, "수치형 컬럼이 없습니다", ha="center", va="center")
+            ax.text(0.5, 0.5, "No numeric columns found", ha="center", va="center")
             return fig
 
         n = len(cols)
@@ -75,6 +75,6 @@ class DistributionPlotter:
         for idx in range(n, len(list(axes))):
             axes[idx].set_visible(False)
 
-        fig.suptitle("커널 밀도 추정", fontsize=self._theme.title_size + 2, y=1.02)
+        fig.suptitle("Kernel Density Estimation", fontsize=self._theme.title_size + 2, y=1.02)
         fig.tight_layout()
         return fig

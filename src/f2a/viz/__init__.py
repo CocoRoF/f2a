@@ -1,4 +1,4 @@
-"""Viz module — 시각화 엔진."""
+"""Viz module — visualization engine."""
 
 from f2a.viz.plots import BasicPlotter
 from f2a.viz.theme import F2ATheme

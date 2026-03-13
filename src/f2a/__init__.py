@@ -1,6 +1,7 @@
 """f2a — File to Analysis.
 
-다양한 데이터 소스를 입력받아 기술 통계 분석 및 시각화를 자동으로 수행하는 라이브러리입니다.
+A library that automatically performs descriptive statistical analysis
+and visualization from various data sources.
 
 Usage:
     >>> import f2a

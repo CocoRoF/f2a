@@ -1,4 +1,4 @@
-"""기술 통계 테스트."""
+"""Descriptive statistics tests."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from f2a.stats.missing import MissingStats
 
 
 class TestDescriptiveStats:
-    """DescriptiveStats 테스트."""
+    """DescriptiveStats tests."""
 
     def test_summary_returns_dataframe(self, sample_mixed_df: pd.DataFrame) -> None:
         schema = infer_schema(sample_mixed_df)
@@ -38,7 +38,7 @@ class TestDescriptiveStats:
 
 
 class TestCorrelationStats:
-    """CorrelationStats 테스트."""
+    """CorrelationStats tests."""
 
     def test_pearson(self, sample_numeric_df: pd.DataFrame) -> None:
         schema = infer_schema(sample_numeric_df)
@@ -55,7 +55,7 @@ class TestCorrelationStats:
 
 
 class TestMissingStats:
-    """MissingStats 테스트."""
+    """MissingStats tests."""
 
     def test_column_summary(self, sample_mixed_df: pd.DataFrame) -> None:
         schema = infer_schema(sample_mixed_df)

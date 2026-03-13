@@ -1,4 +1,4 @@
-"""DataLoader 테스트 — 다양한 포맷 자동 감지 및 로딩."""
+"""DataLoader tests — auto-detection and loading of various formats."""
 
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ from f2a.utils.exceptions import DataLoadError, EmptyDataError, UnsupportedForma
 from f2a.utils.validators import detect_source_type, get_supported_formats
 
 
-# ── fixture: 다양한 포맷의 테스트 파일 생성 ──────────────────
+# ── fixtures: test file creation for various formats ──────────────────
 
 @pytest.fixture
 def base_df() -> pd.DataFrame:
-    """모든 포맷 테스트에 사용할 기본 DataFrame."""
+    """Base DataFrame used for all format tests."""
     np.random.seed(42)
     return pd.DataFrame(
         {
@@ -62,7 +62,7 @@ def jsonl_file(tmp_path: Path, base_df: pd.DataFrame) -> Path:
 
 @pytest.fixture
 def ndjson_file(tmp_path: Path, base_df: pd.DataFrame) -> Path:
-    """ndjson 확장자 테스트."""
+    """ndjson extension test."""
     p = tmp_path / "test.ndjson"
     base_df.to_json(p, orient="records", lines=True, force_ascii=False)
     return p
@@ -70,7 +70,7 @@ def ndjson_file(tmp_path: Path, base_df: pd.DataFrame) -> Path:
 
 @pytest.fixture
 def delimited_pipe_file(tmp_path: Path, base_df: pd.DataFrame) -> Path:
-    """파이프(|) 구분자 텍스트 파일."""
+    """Pipe (|) delimited text file."""
     p = tmp_path / "test.txt"
     base_df.to_csv(p, index=False, sep="|")
     return p
@@ -78,7 +78,7 @@ def delimited_pipe_file(tmp_path: Path, base_df: pd.DataFrame) -> Path:
 
 @pytest.fixture
 def delimited_semicolon_file(tmp_path: Path, base_df: pd.DataFrame) -> Path:
-    """세미콜론(;) 구분자 dat 파일."""
+    """Semicolon (;) delimited dat file."""
     p = tmp_path / "test.dat"
     base_df.to_csv(p, index=False, sep=";")
     return p
@@ -86,7 +86,7 @@ def delimited_semicolon_file(tmp_path: Path, base_df: pd.DataFrame) -> Path:
 
 @pytest.fixture
 def nested_json_file(tmp_path: Path) -> Path:
-    """중첩 JSON 파일."""
+    """Nested JSON file."""
     data = {
         "metadata": {"source": "test", "version": 1},
         "records": [
@@ -151,7 +151,7 @@ def xml_file(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def cp949_csv_file(tmp_path: Path) -> Path:
-    """CP949 인코딩 CSV (한국어)."""
+    """CP949-encoded CSV (Korean)."""
     p = tmp_path / "korean.csv"
     df = pd.DataFrame({"이름": ["홍길동", "김철수"], "나이": [30, 25]})
     df.to_csv(p, index=False, encoding="cp949")
@@ -160,7 +160,7 @@ def cp949_csv_file(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def fwf_file(tmp_path: Path) -> Path:
-    """고정 폭 파일."""
+    """Fixed-width file."""
     p = tmp_path / "test.fwf"
     content = """Name      Age  Score
 Alice      28   95.5
@@ -172,14 +172,14 @@ Charlie    22   91.0
 
 
 # ================================================================
-#  소스 타입 감지 테스트
+#  Source type detection tests
 # ================================================================
 
 
 class TestDetectSourceType:
-    """소스 타입 감지 테스트."""
+    """Source type detection tests."""
 
-    # ── 확장자 기반 ──
+    # ── Extension-based ──
     def test_csv(self) -> None:
         assert detect_source_type("data.csv") == "csv"
 
@@ -302,12 +302,12 @@ class TestDetectSourceType:
         result = detect_source_type("https://example.com/api/data")
         assert result == "url_auto"
 
-    # ── 에러 ──
+    # ── Errors ──
     def test_unsupported(self) -> None:
         with pytest.raises(UnsupportedFormatError):
             detect_source_type("data.xyz")
 
-    # ── 유틸리티 ──
+    # ── Utilities ──
     def test_supported_formats_returns_dict(self) -> None:
         result = get_supported_formats()
         assert isinstance(result, dict)
@@ -324,12 +324,12 @@ class TestDetectSourceType:
 
 
 # ================================================================
-#  콘텐츠 스니핑 테스트
+#  Content sniffing tests
 # ================================================================
 
 
 class TestContentSniffing:
-    """확장자 없는 파일에서 콘텐츠 기반 감지 테스트."""
+    """Content-based detection tests for files without extensions."""
 
     def test_sniff_csv_content(self, tmp_path: Path) -> None:
         p = tmp_path / "noext"
@@ -370,12 +370,12 @@ class TestContentSniffing:
 
 
 # ================================================================
-#  DataLoader — 파일 로딩 테스트
+#  DataLoader — file loading tests
 # ================================================================
 
 
 class TestDataLoaderCSV:
-    """CSV 로딩 테스트."""
+    """CSV loading tests."""
 
     def test_load_csv(self, csv_file: Path) -> None:
         df = DataLoader().load(str(csv_file))
@@ -383,7 +383,7 @@ class TestDataLoaderCSV:
         assert "id" in df.columns
 
     def test_load_csv_cp949(self, cp949_csv_file: Path) -> None:
-        """CP949 인코딩 CSV 자동 처리 테스트."""
+        """CP949-encoded CSV auto-handling test."""
         df = DataLoader().load(str(cp949_csv_file))
         assert len(df) == 2
         assert "이름" in df.columns
@@ -409,7 +409,7 @@ class TestDataLoaderJSON:
         assert len(df) == 50
 
     def test_load_nested_json(self, nested_json_file: Path) -> None:
-        """중첩 JSON의 자동 flatten 테스트."""
+        """Nested JSON auto-flatten test."""
         df = DataLoader().load(str(nested_json_file))
         assert len(df) == 3
         assert "id" in df.columns
@@ -417,13 +417,13 @@ class TestDataLoaderJSON:
 
 class TestDataLoaderDelimited:
     def test_load_pipe_delimited(self, delimited_pipe_file: Path) -> None:
-        """파이프 구분자 자동 감지 테스트."""
+        """Pipe delimiter auto-detection test."""
         df = DataLoader().load(str(delimited_pipe_file))
         assert len(df) == 50
         assert len(df.columns) >= 5
 
     def test_load_semicolon_delimited(self, delimited_semicolon_file: Path) -> None:
-        """세미콜론 구분자 자동 감지 테스트."""
+        """Semicolon delimiter auto-detection test."""
         df = DataLoader().load(str(delimited_semicolon_file))
         assert len(df) == 50
         assert len(df.columns) >= 5
@@ -435,7 +435,7 @@ class TestDataLoaderDelimited:
 
 class TestDataLoaderSQLite:
     def test_load_sqlite_auto(self, sqlite_file: Path) -> None:
-        """첫 번째 테이블 자동 선택 테스트."""
+        """First table auto-selection test."""
         df = DataLoader().load(str(sqlite_file))
         assert len(df) == 50
 
@@ -450,7 +450,7 @@ class TestDataLoaderSQLite:
         assert len(df) > 0
 
     def test_load_sqlite_missing_table(self, sqlite_file: Path) -> None:
-        with pytest.raises(DataLoadError, match="테이블"):
+        with pytest.raises(DataLoadError, match="Table"):
             DataLoader().load(str(sqlite_file), table="nonexistent")
 
 
@@ -468,7 +468,7 @@ class TestDataLoaderPickle:
 
 class TestDataLoaderHTML:
     def test_load_html_largest_table(self, html_file: Path) -> None:
-        """HTML에서 가장 큰 테이블 자동 선택 테스트."""
+        """HTML largest table auto-selection test."""
         df = DataLoader().load(str(html_file))
         assert len(df) == 50
 

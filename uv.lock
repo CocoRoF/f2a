@@ -800,6 +800,7 @@ wheels = [
 
 [[package]]
 name = "f2a"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "matplotlib" },
@@ -872,39 +873,30 @@ xml = [
 [package.metadata]
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0" },
-    { name = "datasets", marker = "extra == 'all'", specifier = ">=2.14" },
     { name = "datasets", marker = "extra == 'hf'", specifier = ">=2.14" },
-    { name = "duckdb", marker = "extra == 'all'", specifier = ">=0.9" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=0.9" },
+    { name = "f2a", extras = ["hf", "excel", "parquet", "arrow", "spss", "hdf5", "ods", "xml", "duckdb", "rich", "report"], marker = "extra == 'all'" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12" },
-    { name = "jinja2", marker = "extra == 'all'", specifier = ">=3.1" },
     { name = "jinja2", marker = "extra == 'report'", specifier = ">=3.1" },
-    { name = "lxml", marker = "extra == 'all'", specifier = ">=4.9" },
     { name = "lxml", marker = "extra == 'xml'", specifier = ">=4.9" },
     { name = "matplotlib", specifier = ">=3.7" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5" },
     { name = "numpy", specifier = ">=1.24" },
-    { name = "odfpy", marker = "extra == 'all'", specifier = ">=1.4" },
     { name = "odfpy", marker = "extra == 'ods'", specifier = ">=1.4" },
-    { name = "openpyxl", marker = "extra == 'all'", specifier = ">=3.1" },
     { name = "openpyxl", marker = "extra == 'excel'", specifier = ">=3.1" },
     { name = "pandas", specifier = ">=2.0" },
-    { name = "pyarrow", marker = "extra == 'all'", specifier = ">=12.0" },
     { name = "pyarrow", marker = "extra == 'arrow'", specifier = ">=12.0" },
     { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=12.0" },
-    { name = "pyreadstat", marker = "extra == 'all'", specifier = ">=1.2" },
     { name = "pyreadstat", marker = "extra == 'spss'", specifier = ">=1.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "rich", marker = "extra == 'all'", specifier = ">=13.0" },
     { name = "rich", marker = "extra == 'rich'", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "seaborn", specifier = ">=0.13" },
-    { name = "tables", marker = "extra == 'all'", specifier = ">=3.8" },
     { name = "tables", marker = "extra == 'hdf5'", specifier = ">=3.8" },
 ]
-provides-extras = ["all", "arrow", "dev", "duckdb", "excel", "hdf5", "hf", "ods", "parquet", "report", "rich", "spss", "xml"]
+provides-extras = ["hf", "excel", "parquet", "arrow", "spss", "hdf5", "ods", "xml", "duckdb", "rich", "report", "dev", "all"]
 
 [[package]]
 name = "filelock"

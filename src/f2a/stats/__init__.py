@@ -1,4 +1,4 @@
-"""Stats module — 기술 통계, 분포 분석, 상관 분석, 결측치 분석."""
+"""Stats module — descriptive statistics, distribution, correlation, and missing data analysis."""
 
 from f2a.stats.descriptive import DescriptiveStats
 from f2a.stats.correlation import CorrelationStats

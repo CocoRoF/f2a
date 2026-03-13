@@ -1,32 +1,32 @@
-"""커스텀 예외 정의."""
+"""Custom exception definitions."""
 
 
 class F2AError(Exception):
-    """f2a 라이브러리의 기본 예외."""
+    """Base exception for the f2a library."""
 
 
 class UnsupportedFormatError(F2AError):
-    """지원하지 않는 파일 포맷."""
+    """Unsupported file format."""
 
     def __init__(self, source: str, detected: str | None = None) -> None:
-        msg = f"지원하지 않는 파일 포맷입니다: {source}"
+        msg = f"Unsupported file format: {source}"
         if detected:
-            msg += f" (감지된 형식: {detected})"
+            msg += f" (detected: {detected})"
         super().__init__(msg)
 
 
 class DataLoadError(F2AError):
-    """데이터 로딩 실패."""
+    """Data loading failure."""
 
     def __init__(self, source: str, reason: str = "") -> None:
-        msg = f"데이터를 로딩할 수 없습니다: {source}"
+        msg = f"Failed to load data: {source}"
         if reason:
             msg += f" — {reason}"
         super().__init__(msg)
 
 
 class EmptyDataError(F2AError):
-    """빈 데이터셋."""
+    """Empty dataset."""
 
     def __init__(self, source: str) -> None:
-        super().__init__(f"데이터셋이 비어 있습니다: {source}")
+        super().__init__(f"Dataset is empty: {source}")

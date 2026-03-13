@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────────
-#  PyPI 자동 배포 워크플로우
-#  트리거: deploy 브랜치에 push 될 때
-#  조건:  PyPI에 아직 배포된 적 없거나, 버전이 올라간 경우에만 배포
+#  PyPI auto-deploy workflow
+#  Trigger: push to the deploy branch
+#  Condition: only deploy if not yet published on PyPI, or version bumped
 # ──────────────────────────────────────────────────────────────
 name: Publish to PyPI
 
@@ -11,7 +11,7 @@ on:
       - deploy
 
 jobs:
-  # ── 1단계: 버전 확인 ──────────────────────────────────────
+  # ── Step 1: Version check ─────────────────────────────────
   check-version:
     runs-on: ubuntu-latest
     outputs:
@@ -28,7 +28,7 @@ jobs:
       - name: Read local version
         id: local
         run: |
-          VERSION=$(python -c "exec(open('src/f2a/_version.py').read()); print(__version__)")
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 Local version: $VERSION"
 
@@ -36,7 +36,7 @@ jobs:
         id: pypi
         run: |
           LOCAL="${{ steps.local.outputs.version }}"
-          # PyPI JSON API — 패키지가 없으면 404
+          # PyPI JSON API — returns 404 if the package does not exist
           HTTP_CODE=$(curl -s -o /tmp/pypi.json -w "%{http_code}" \
             "https://pypi.org/pypi/f2a/json")
 
@@ -70,7 +70,7 @@ jobs:
             echo "⏭️ Version $LOCAL already on PyPI — skipping"
           fi
 
-  # ── 2단계: 테스트 ─────────────────────────────────────────
+  # ── Step 2: Tests ─────────────────────────────────────────
   test:
     needs: check-version
     if: needs.check-version.outputs.should_publish == 'true'
@@ -95,7 +95,7 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
-  # ── 3단계: 빌드 & 배포 ───────────────────────────────────
+  # ── Step 3: Build & Deploy ────────────────────────────────
   publish:
     needs: [check-version, test]
     if: needs.check-version.outputs.should_publish == 'true'
@@ -119,8 +119,8 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Trusted Publisher 를 사용하므로 API 토큰 불필요
-        # PyPI 프로젝트 설정에서 GitHub Actions 를 Trusted Publisher 로 등록해야 합니다.
-        # 수동 토큰 사용 시 아래 주석 해제:
+        # Uses Trusted Publisher, so no API token required.
+        # You must register GitHub Actions as a Trusted Publisher in the PyPI project settings.
+        # To use a manual token instead, uncomment below:
         # with:
         #   password: ${{ secrets.PYPI_API_TOKEN }}
