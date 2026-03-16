@@ -13,6 +13,7 @@ Generates comprehensive single-page HTML reports with:
 from __future__ import annotations
 
 import base64
+import html as html_mod
 import io
 from pathlib import Path
 from typing import Any
@@ -138,6 +139,67 @@ _METRIC_TIPS: dict[str, str] = {
     "component": "Principal component identifier (PC1, PC2, …).",
     "value": "Category or discrete value.",
     "percentage": "Percentage share of this value = (count / total) × 100.",
+    # ── Advanced Distribution ──
+    "best_distribution": "Scipy distribution that best fits the data according to AIC.",
+    "aic": "Akaike Information Criterion — lower is better. Penalises complexity.",
+    "bic": "Bayesian Information Criterion — lower is better. More conservative than AIC.",
+    "ks_statistic": "Kolmogorov-Smirnov statistic measuring max CDF deviation from the fitted distribution.",
+    "jarque_bera_stat": "Jarque-Bera test statistic. Large values indicate non-normality.",
+    "jb_p_value": "p-value of the Jarque-Bera test. p < 0.05 → reject normality.",
+    "recommended_transform": "Power transform recommended to make the column more normal (Box-Cox or Yeo-Johnson).",
+    "original_skew": "Skewness of the original (untransformed) column.",
+    "transformed_skew": "Skewness after applying the recommended power transform.",
+    "bandwidth_silverman": "Kernel bandwidth via Silverman's rule for KDE estimation.",
+    "bandwidth_scott": "Kernel bandwidth via Scott's rule for KDE estimation.",
+    # ── Advanced Correlation ──
+    "partial_corr": "Partial correlation — Pearson correlation after removing confounding effects of other variables.",
+    "mutual_information": "Mutual information (bits) — measures non-linear dependency between two variables.",
+    "ci_lower": "Lower bound of the 95% bootstrap confidence interval for the correlation.",
+    "ci_upper": "Upper bound of the 95% bootstrap confidence interval for the correlation.",
+    "distance_corr": "Székely distance correlation — captures non-linear dependencies (0 = independent, 1 = dependent).",
+    # ── Clustering ──
+    "optimal_k": "Best number of clusters determined by silhouette score analysis.",
+    "best_silhouette": "Highest mean silhouette score across evaluated k values (−1 to 1, higher = better separation).",
+    "inertia": "Within-cluster sum of squares (WCSS). Lower = tighter clusters.",
+    "n_clusters_dbscan": "Number of clusters found by DBSCAN (excludes noise).",
+    "noise_ratio": "Fraction of points labelled as noise by DBSCAN.",
+    "eps": "DBSCAN epsilon — neighbourhood radius auto-estimated from k-distance plot.",
+    # ── Dimensionality Reduction ──
+    "kl_divergence": "Kullback-Leibler divergence of the t-SNE embedding. Lower = better fit.",
+    "tsne_perplexity": "Perplexity parameter for t-SNE (balances local vs. global structure).",
+    "n_factors": "Number of latent factors retained via Kaiser criterion (eigenvalue > 1).",
+    "factor_loading": "Correlation between an observed variable and a latent factor.",
+    "noise_variance": "Estimated noise (uniqueness) for each variable in Factor Analysis.",
+    # ── Feature Insights ──
+    "interaction_strength": "Pearson correlation between a product-interaction term and the top feature.",
+    "monotonic_gap": "Gap between Pearson and Spearman correlations — large gap → non-linear monotonic relationship.",
+    "entropy_equal_width": "Shannon entropy of equal-width binning. Lower = more concentrated distribution.",
+    "entropy_equal_freq": "Shannon entropy of equal-frequency binning. Lower = more concentrated.",
+    "cardinality": "Number of unique values in a categorical column.",
+    "encoding_rec": "Recommended encoding strategy based on cardinality analysis.",
+    "leakage_risk": "Risk level (low/medium/high) that a feature may leak target information.",
+    # ── Advanced Anomaly ──
+    "anomaly_score_if": "Isolation Forest anomaly score. More negative = more anomalous.",
+    "lof_score": "Local Outlier Factor minus-score. More negative = more anomalous.",
+    "mahalanobis_dist": "Mahalanobis distance from the data centroid. Larger = more unusual.",
+    "consensus_flag": "True if ≥ 2 out of 3 anomaly methods agree the point is anomalous.",
+    # ── Statistical Tests ──
+    "levene_stat": "Levene test statistic for equality of variances.",
+    "levene_p": "p-value of Levene's test. p < 0.05 → variances are significantly different.",
+    "kw_stat": "Kruskal-Wallis H statistic — non-parametric one-way ANOVA.",
+    "kw_p": "p-value of Kruskal-Wallis test. p < 0.05 → at least one group differs.",
+    "mw_stat": "Mann-Whitney U statistic — non-parametric two-sample rank test.",
+    "mw_p": "p-value of Mann-Whitney U test.",
+    "chi2_stat": "Chi-square goodness-of-fit statistic vs. uniform distribution.",
+    "chi2_p": "p-value of chi-square goodness-of-fit test.",
+    "grubbs_stat": "Grubbs test statistic for detecting a single outlier.",
+    "grubbs_p": "p-value of Grubbs test.",
+    "adf_stat": "Augmented Dickey-Fuller test statistic for stationarity.",
+    "adf_p": "p-value of the ADF test. p < 0.05 → series is stationary.",
+    # ── Data Profiling ──
+    "numeric_ratio": "Fraction of columns that are numeric.",
+    "categorical_ratio": "Fraction of columns that are categorical.",
+    "duplicate_row_ratio": "Fraction of rows that are exact duplicates.",
 }
 
 
@@ -168,7 +230,7 @@ def _df_to_html(df: pd.DataFrame, max_rows: int = 100) -> str:
     for idx_val, row in sub.iterrows():
         parts.append("<tr>")
         # Index cell — row identifier
-        parts.append(f"<td>{idx_val}</td>")
+        parts.append(f"<td>{html_mod.escape(str(idx_val))}</td>")
         for col in sub.columns:
             val = row[col]
             col_tip = _METRIC_TIPS.get(str(col), "")
@@ -178,7 +240,7 @@ def _df_to_html(df: pd.DataFrame, max_rows: int = 100) -> str:
             else:
                 display = str(val) if pd.notna(val) else "NaN"
             tip_attr = f' data-tip="{col_tip}"' if col_tip else ""
-            parts.append(f"<td{tip_attr}>{display}</td>")
+            parts.append(f"<td{tip_attr}>{html_mod.escape(display)}</td>")
         parts.append("</tr>")
     parts.append("</tbody></table>")
     return "\n".join(parts)
@@ -186,10 +248,19 @@ def _df_to_html(df: pd.DataFrame, max_rows: int = 100) -> str:
 
 def _dict_to_cards(d: dict[str, Any], fmt: str = ",.0f") -> str:
     """Convert a dict to stat-card HTML elements with tooltips."""
+    # Keys that represent [0,1] ratios and should be displayed as percentages
+    _RATIO_KEYS = {
+        "anomaly_ratio", "noise_ratio", "consensus_ratio", "missing_ratio",
+        "duplicate_row_ratio", "numeric_ratio", "categorical_ratio",
+        "total_variance_explained",
+    }
     cards: list[str] = []
     for key, val in d.items():
         if isinstance(val, float):
-            display = f"{val * 100:.1f}%" if val <= 1 else f"{val:{fmt}}"
+            if key in _RATIO_KEYS and 0 <= val <= 1:
+                display = f"{val * 100:.1f}%"
+            else:
+                display = f"{val:{fmt}}"
         elif isinstance(val, int):
             display = f"{val:,}"
         else:
@@ -341,6 +412,30 @@ section {
 }
 /* Footer */
 footer { text-align: center; margin-top: 40px; padding: 20px; color: #aaa; font-size: 0.85em; }
+/* Sub-tabs (2nd depth: Basic / Advanced categories) */
+.sub-tab-bar {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    border-bottom: 2px solid #d5dce4; margin: 18px 0 0 0; padding: 0;
+}
+.sub-tab-btn {
+    padding: 7px 16px; border: 1px solid transparent; border-bottom: none;
+    background: transparent; cursor: pointer; border-radius: 6px 6px 0 0;
+    font-size: 0.84em; color: #888; transition: all 0.15s; white-space: nowrap;
+}
+.sub-tab-btn:hover { background: #edf2f7; color: #555; }
+.sub-tab-btn.active {
+    background: #fff; border-color: #d5dce4; border-bottom: 2px solid #fff;
+    margin-bottom: -2px; font-weight: 600; color: #2980b9;
+}
+.sub-tab-btn.adv { color: #8e44ad; }
+.sub-tab-btn.adv.active { color: #8e44ad; border-bottom-color: #fff; }
+.sub-tab-content { padding: 18px 0; display: none; }
+.sub-tab-content.active { display: block; }
+/* Advanced section badges */
+.adv-badge {
+    display: inline-block; background: #8e44ad; color: #fff; font-size: 0.7em;
+    padding: 1px 7px; border-radius: 10px; margin-left: 8px; vertical-align: middle;
+}
 /* Tooltip */
 .f2a-tooltip {
     position: fixed; z-index: 9999;
@@ -508,6 +603,32 @@ _TOOLTIP_JS = """
         hideTimer = setTimeout(hide, 120);
     });
 })();
+"""
+
+_SUB_TAB_JS = """
+function openSubTab(evt, subTabId, groupId) {
+    var group = document.getElementById(groupId);
+    if (!group) return;
+    group.querySelectorAll('.sub-tab-content').forEach(function(el) { el.classList.remove('active'); });
+    group.querySelectorAll('.sub-tab-btn').forEach(function(el) { el.classList.remove('active'); });
+    var target = document.getElementById(subTabId);
+    if (target) target.classList.add('active');
+    evt.currentTarget.classList.add('active');
+}
+/* When a topnav anchor is clicked, ensure the Basic sub-tab is active */
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.topnav a[href^="#"]').forEach(function(link) {
+        link.addEventListener('click', function() {
+            var subTabGroups = document.querySelectorAll('.sub-tab-group');
+            subTabGroups.forEach(function(group) {
+                var basicBtn = group.querySelector('.sub-tab-btn');
+                if (basicBtn && !basicBtn.classList.contains('active')) {
+                    basicBtn.click();
+                }
+            });
+        });
+    });
+});
 """
 
 
@@ -758,8 +879,250 @@ def _section_duplicates(stats: Any) -> str:
 def _section_warnings(warnings: list[str]) -> str:
     if not warnings:
         return ""
-    items = "".join(f"<li>{w}</li>" for w in warnings)
+    items = "".join(f"<li>{html_mod.escape(w)}</li>" for w in warnings)
     return f'<div class="warnings"><ul>{items}</ul></div>'
+
+
+# =====================================================================
+#  Advanced section content builders
+# =====================================================================
+
+def _section_adv_distribution(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("advanced_distribution", {})
+    if not adv:
+        return ""
+    body = ""
+    bf = adv.get("best_fit")
+    if bf is not None and not bf.empty:
+        body += '<h3 class="section-subtitle">Best-Fit Distribution</h3>'
+        body += _wrap_table(_df_to_html(bf))
+    jb = adv.get("jarque_bera")
+    if jb is not None and not jb.empty:
+        body += '<h3 class="section-subtitle">Jarque-Bera Normality Test</h3>'
+        body += _wrap_table(_df_to_html(jb))
+    pt = adv.get("power_transform")
+    if pt is not None and not pt.empty:
+        body += '<h3 class="section-subtitle">Power Transform Recommendation</h3>'
+        body += _wrap_table(_df_to_html(pt))
+    kde = adv.get("kde_bandwidth")
+    if kde is not None and not kde.empty:
+        body += '<h3 class="section-subtitle">KDE Bandwidth Analysis</h3>'
+        body += _wrap_table(_df_to_html(kde))
+    chart_keys = [
+        "Best-Fit Distribution Overlay", "ECDF Plot",
+        "Power Transform Comparison", "Jarque-Bera Normality Test",
+    ]
+    chart_parts: dict[str, plt.Figure] = {k: figures[k] for k in chart_keys if k in figures}
+    if chart_parts:
+        body += _figures_to_html(chart_parts, grid=False)
+    return body
+
+
+def _section_adv_correlation(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("advanced_correlation", {})
+    if not adv:
+        return ""
+    body = ""
+    pcorr = adv.get("partial_correlation")
+    if pcorr is not None and not pcorr.empty:
+        body += '<h3 class="section-subtitle">Partial Correlation Matrix</h3>'
+        body += _wrap_table(_df_to_html(pcorr))
+    mi = adv.get("mutual_information")
+    if mi is not None and not mi.empty:
+        body += '<h3 class="section-subtitle">Mutual Information Matrix</h3>'
+        body += _wrap_table(_df_to_html(mi))
+    bci = adv.get("bootstrap_ci")
+    if bci is not None and not bci.empty:
+        body += '<h3 class="section-subtitle">Bootstrap Correlation 95% CI</h3>'
+        body += _wrap_table(_df_to_html(bci))
+    dc = adv.get("distance_correlation")
+    if dc is not None and not dc.empty:
+        body += '<h3 class="section-subtitle">Distance Correlation Matrix</h3>'
+        body += _wrap_table(_df_to_html(dc))
+    chart_keys = [
+        "Partial Correlation Heatmap", "Mutual Information Heatmap",
+        "Bootstrap Correlation CI", "Correlation Network",
+        "Distance Correlation Heatmap",
+    ]
+    chart_parts: dict[str, plt.Figure] = {k: figures[k] for k in chart_keys if k in figures}
+    if chart_parts:
+        body += _figures_to_html(chart_parts, grid=True)
+    return body
+
+
+def _section_clustering(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("clustering", {})
+    if not adv:
+        return ""
+    body = ""
+    km = adv.get("kmeans")
+    if km:
+        body += '<h3 class="section-subtitle">K-Means Summary</h3>'
+        summary_cards = {
+            "optimal_k": km.get("optimal_k"),
+            "best_silhouette": km.get("best_silhouette"),
+        }
+        sizes = km.get("cluster_sizes", {})
+        if sizes:
+            summary_cards["largest_cluster"] = max(sizes.values()) if sizes else 0
+        body += '<div class="cards">' + _dict_to_cards(summary_cards) + "</div>"
+    db = adv.get("dbscan")
+    if db:
+        body += '<h3 class="section-subtitle">DBSCAN Summary</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "n_clusters_dbscan": db.get("n_clusters", 0),
+            "noise_ratio": db.get("noise_ratio", 0),
+            "eps": db.get("eps", 0),
+        }) + "</div>"
+    hc = adv.get("hierarchical")
+    if hc:
+        body += '<h3 class="section-subtitle">Hierarchical Clustering</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "optimal_k": hc.get("optimal_k"),
+            "best_silhouette": hc.get("silhouette_score"),
+        }) + "</div>"
+    profiles = adv.get("profiles")
+    if profiles is not None and not profiles.empty:
+        body += '<h3 class="section-subtitle">Cluster Profiles</h3>'
+        body += _wrap_table(_df_to_html(profiles))
+    chart_keys = ["Elbow & Silhouette", "Cluster Scatter", "Dendrogram", "Cluster Profiles"]
+    chart_parts: dict[str, plt.Figure] = {k: figures[k] for k in chart_keys if k in figures}
+    if chart_parts:
+        body += _figures_to_html(chart_parts, grid=True)
+    return body
+
+
+def _section_dimreduction(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("dimreduction", {})
+    if not adv:
+        return ""
+    body = ""
+    tsne = adv.get("tsne")
+    if tsne:
+        body += '<h3 class="section-subtitle">t-SNE Embedding</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "kl_divergence": tsne.get("kl_divergence", 0),
+            "n_points": tsne.get("n_samples", 0),
+        }) + "</div>"
+    umap_res = adv.get("umap")
+    if umap_res:
+        body += '<h3 class="section-subtitle">UMAP Embedding</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "n_points": umap_res.get("n_samples", 0),
+        }) + "</div>"
+    fa = adv.get("factor_analysis")
+    if fa:
+        body += '<h3 class="section-subtitle">Factor Analysis</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "n_factors": fa.get("n_factors", 0),
+        }) + "</div>"
+    loadings = adv.get("factor_loadings")
+    if loadings is not None and not loadings.empty:
+        body += '<h3 class="section-subtitle">Factor Loadings</h3>'
+        body += _wrap_table(_df_to_html(loadings))
+    fc = adv.get("feature_contribution")
+    if fc is not None and not fc.empty:
+        body += '<h3 class="section-subtitle">PCA-Weighted Feature Contribution</h3>'
+        body += _wrap_table(_df_to_html(fc))
+    return body
+
+
+def _section_feature_insights(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("feature_insights", {})
+    if not adv:
+        return ""
+    body = ""
+    interact = adv.get("interactions")
+    if interact is not None and not interact.empty:
+        body += '<h3 class="section-subtitle">Interaction Detection</h3>'
+        body += _wrap_table(_df_to_html(interact))
+    mono = adv.get("monotonic")
+    if mono is not None and not mono.empty:
+        body += '<h3 class="section-subtitle">Monotonic Relationship Analysis</h3>'
+        body += _wrap_table(_df_to_html(mono))
+    binning = adv.get("binning")
+    if binning is not None and not binning.empty:
+        body += '<h3 class="section-subtitle">Binning Analysis</h3>'
+        body += _wrap_table(_df_to_html(binning))
+    card = adv.get("cardinality")
+    if card is not None and not card.empty:
+        body += '<h3 class="section-subtitle">Cardinality & Encoding Recommendation</h3>'
+        body += _wrap_table(_df_to_html(card))
+    leak = adv.get("leakage")
+    if leak is not None and not leak.empty:
+        body += '<h3 class="section-subtitle">Leakage Risk Assessment</h3>'
+        body += _wrap_table(_df_to_html(leak))
+    return body
+
+
+def _section_adv_anomaly(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("advanced_anomaly", {})
+    if not adv:
+        return ""
+    body = ""
+    iso = adv.get("isolation_forest")
+    if iso:
+        body += '<h3 class="section-subtitle">Isolation Forest</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "anomaly_count": iso.get("anomaly_count", 0),
+            "anomaly_ratio": iso.get("anomaly_ratio", 0),
+        }) + "</div>"
+    lof = adv.get("local_outlier_factor")
+    if lof:
+        body += '<h3 class="section-subtitle">Local Outlier Factor</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "anomaly_count": lof.get("anomaly_count", 0),
+            "anomaly_ratio": lof.get("anomaly_ratio", 0),
+        }) + "</div>"
+    maha = adv.get("mahalanobis")
+    if maha:
+        body += '<h3 class="section-subtitle">Mahalanobis Distance</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "anomaly_count": maha.get("anomaly_count", 0),
+            "anomaly_ratio": maha.get("anomaly_ratio", 0),
+        }) + "</div>"
+    cons = adv.get("consensus")
+    if cons:
+        body += '<h3 class="section-subtitle">Consensus (≥2/3 agree)</h3>'
+        body += '<div class="cards">' + _dict_to_cards({
+            "consensus_count": cons.get("consensus_count", 0),
+            "consensus_ratio": cons.get("consensus_ratio", 0),
+        }) + "</div>"
+    chart_keys = ["Anomaly Scatter", "Mahalanobis Distance", "Consensus Anomaly Comparison"]
+    chart_parts: dict[str, plt.Figure] = {k: figures[k] for k in chart_keys if k in figures}
+    if chart_parts:
+        body += _figures_to_html(chart_parts, grid=True)
+    return body
+
+
+def _section_stat_tests(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("statistical_tests", {})
+    if not adv:
+        return ""
+    body = ""
+    for key, title in [
+        ("levene", "Levene's Test (Equality of Variances)"),
+        ("kruskal_wallis", "Kruskal-Wallis Test"),
+        ("mann_whitney", "Mann-Whitney U Test"),
+        ("chi_square_goodness", "Chi-Square Goodness of Fit"),
+        ("grubbs", "Grubbs Outlier Test"),
+        ("adf", "Augmented Dickey-Fuller (Stationarity)"),
+    ]:
+        data = adv.get(key)
+        if data is not None and isinstance(data, pd.DataFrame) and not data.empty:
+            body += f'<h3 class="section-subtitle">{title}</h3>'
+            body += _wrap_table(_df_to_html(data))
+        elif data is not None and isinstance(data, dict) and data:
+            body += f'<h3 class="section-subtitle">{title}</h3>'
+            body += '<div class="cards">' + _dict_to_cards(data) + "</div>"
+    return body
+
+
+def _section_data_profiling(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    adv = stats.advanced_stats.get("data_profiling", {})
+    if not adv:
+        return ""
+    return '<div class="cards">' + _dict_to_cards(adv) + "</div>"
 
 
 # =====================================================================
@@ -781,6 +1144,98 @@ _SECTION_ORDER = [
     ("duplicates", "Duplicates"),
     ("warnings-section", "Warnings"),
 ]
+
+_ADV_SUB_TABS = [
+    ("adv-dist", "Distribution+"),
+    ("adv-corr", "Correlation+"),
+    ("clustering", "Clustering"),
+    ("dimreduction", "Dim. Reduction"),
+    ("feat-insights", "Feature Insights"),
+    ("adv-anomaly", "Anomaly+"),
+    ("stat-tests", "Statistical Tests"),
+    ("data-profile", "Data Profile"),
+]
+
+
+def _build_sub_tabs(
+    prefix: str,
+    basic_html: str,
+    stats: Any,
+    figures: dict[str, plt.Figure],
+    config: AnalysisConfig,
+) -> str:
+    """Build 2nd-depth sub-tab structure (Basic + Advanced categories).
+
+    If advanced is disabled or there is no advanced data, return basic_html
+    directly (no sub-tab wrapper).
+    """
+    if not config.advanced:
+        return basic_html
+
+    adv = getattr(stats, "advanced_stats", {})
+    if not adv:
+        return basic_html
+
+    # Build advanced tab contents
+    adv_builders: list[tuple[str, str, str, Any]] = [
+        ("adv-dist", "Distribution+", "Advanced Distribution Analysis",
+         lambda: _section_adv_distribution(stats, figures)),
+        ("adv-corr", "Correlation+", "Advanced Correlation Analysis",
+         lambda: _section_adv_correlation(stats, figures)),
+        ("clustering", "Clustering", "Clustering Analysis",
+         lambda: _section_clustering(stats, figures)),
+        ("dimreduction", "Dim. Reduction", "Dimensionality Reduction",
+         lambda: _section_dimreduction(stats, figures)),
+        ("feat-insights", "Feature Insights", "Feature Engineering Insights",
+         lambda: _section_feature_insights(stats, figures)),
+        ("adv-anomaly", "Anomaly+", "Advanced Anomaly Detection",
+         lambda: _section_adv_anomaly(stats, figures)),
+        ("stat-tests", "Stat Tests", "Statistical Tests",
+         lambda: _section_stat_tests(stats, figures)),
+        ("data-profile", "Data Profile", "Data Profiling Summary",
+         lambda: _section_data_profiling(stats, figures)),
+    ]
+
+    group_id = f"stg-{prefix}"
+    basic_tab_id = f"{prefix}-basic"
+
+    buttons: list[str] = [
+        f'<button class="sub-tab-btn active" '
+        f"""onclick="openSubTab(event, '{basic_tab_id}', '{group_id}')">Basic</button>"""
+    ]
+    contents: list[str] = [
+        f'<div id="{basic_tab_id}" class="sub-tab-content active">{basic_html}</div>'
+    ]
+
+    for key, label, section_title, builder_fn in adv_builders:
+        tab_id = f"{prefix}-{key}"
+        try:
+            body = builder_fn()
+        except Exception:
+            body = ""
+        if not body.strip():
+            continue
+        wrapped = (
+            f'<section><h2 class="section-title">{section_title}'
+            f'<span class="adv-badge">ADV</span></h2>{body}</section>'
+        )
+        buttons.append(
+            f'<button class="sub-tab-btn adv" '
+            f"""onclick="openSubTab(event, '{tab_id}', '{group_id}')">{label}</button>"""
+        )
+        contents.append(
+            f'<div id="{tab_id}" class="sub-tab-content">{wrapped}</div>'
+        )
+
+    if len(buttons) <= 1:
+        return basic_html
+
+    return (
+        f'<div id="{group_id}">'
+        f'<div class="sub-tab-bar">{"".join(buttons)}</div>'
+        f'{"".join(contents)}'
+        f'</div>'
+    )
 
 
 # =====================================================================
@@ -805,20 +1260,24 @@ class ReportGenerator:
         warnings = warnings or []
         config = config or AnalysisConfig()
 
-        sections_html = ""
-        sections_html += _build_section("overview", "Overview", _section_overview(schema_summary))
-        sections_html += _build_section("quality", "Data Quality", _section_quality(stats), config.quality_score)
-        sections_html += _build_section("preprocessing", "Preprocessing", _section_preprocessing(stats), config.preprocessing)
-        sections_html += _build_section("descriptive", "Descriptive Statistics", _section_descriptive(stats, figures), config.descriptive)
-        sections_html += _build_section("distribution", "Distribution Analysis", _section_distribution(stats, figures), config.distribution)
-        sections_html += _build_section("correlation", "Correlation Analysis", _section_correlation(stats, figures), config.correlation)
-        sections_html += _build_section("missing", "Missing Data Analysis", _section_missing(stats, figures))
-        sections_html += _build_section("outlier", "Outlier Detection", _section_outlier(stats, figures), config.outlier)
-        sections_html += _build_section("categorical", "Categorical Analysis", _section_categorical(stats, figures), config.categorical)
-        sections_html += _build_section("importance", "Feature Importance", _section_feature_importance(stats, figures), config.feature_importance)
-        sections_html += _build_section("pca", "PCA Analysis", _section_pca(stats, figures), config.pca)
-        sections_html += _build_section("duplicates", "Duplicate Analysis", _section_duplicates(stats), config.duplicates)
-        sections_html += _build_section("warnings-section", "Warnings", _section_warnings(warnings), bool(warnings))
+        # Build basic sections
+        basic_sections = ""
+        basic_sections += _build_section("overview", "Overview", _section_overview(schema_summary))
+        basic_sections += _build_section("quality", "Data Quality", _section_quality(stats), config.quality_score)
+        basic_sections += _build_section("preprocessing", "Preprocessing", _section_preprocessing(stats), config.preprocessing)
+        basic_sections += _build_section("descriptive", "Descriptive Statistics", _section_descriptive(stats, figures), config.descriptive)
+        basic_sections += _build_section("distribution", "Distribution Analysis", _section_distribution(stats, figures), config.distribution)
+        basic_sections += _build_section("correlation", "Correlation Analysis", _section_correlation(stats, figures), config.correlation)
+        basic_sections += _build_section("missing", "Missing Data Analysis", _section_missing(stats, figures))
+        basic_sections += _build_section("outlier", "Outlier Detection", _section_outlier(stats, figures), config.outlier)
+        basic_sections += _build_section("categorical", "Categorical Analysis", _section_categorical(stats, figures), config.categorical)
+        basic_sections += _build_section("importance", "Feature Importance", _section_feature_importance(stats, figures), config.feature_importance)
+        basic_sections += _build_section("pca", "PCA Analysis", _section_pca(stats, figures), config.pca)
+        basic_sections += _build_section("duplicates", "Duplicate Analysis", _section_duplicates(stats), config.duplicates)
+        basic_sections += _build_section("warnings-section", "Warnings", _section_warnings(warnings), bool(warnings))
+
+        # Wrap with 2-depth sub-tabs (Basic / Advanced categories)
+        sections_html = _build_sub_tabs("single", basic_sections, stats, figures, config)
 
         nav_links = "".join(
             f'<a href="#{sid}">{label}</a>' for sid, label in _SECTION_ORDER
@@ -831,19 +1290,20 @@ class ReportGenerator:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>f2a Report - {dataset_name}</title>
+<title>f2a Report - {html_mod.escape(dataset_name)}</title>
 <style>{_CSS}</style>
 </head>
 <body>
 <div class="header">
     <h1>f2a Analysis Report</h1>
-    <p>{dataset_name} &mdash; {rows:,} rows x {cols} columns</p>
+    <p>{html_mod.escape(dataset_name)} &mdash; {rows:,} rows x {cols} columns</p>
 </div>
 <nav class="topnav">{nav_links}</nav>
 <div class="main">
 {sections_html}
 </div>
 <footer>Generated by <strong>f2a</strong> (File to Analysis)</footer>
+<script>{_SUB_TAB_JS}</script>
 <script>{_DRAG_SCROLL_JS}</script>
 <script>{_NAV_SCROLL_JS}</script>
 <script>{_TOOLTIP_JS}</script>
@@ -889,20 +1349,24 @@ class ReportGenerator:
             schema = sec["schema_summary"]
             sec_warnings = sec.get("warnings", [])
 
-            inner = ""
-            inner += _build_section(f"{tab_id}-overview", "Overview", _section_overview(schema))
-            inner += _build_section(f"{tab_id}-quality", "Data Quality", _section_quality(s), config.quality_score)
-            inner += _build_section(f"{tab_id}-preprocessing", "Preprocessing", _section_preprocessing(s), config.preprocessing)
-            inner += _build_section(f"{tab_id}-descriptive", "Descriptive Statistics", _section_descriptive(s, figures), config.descriptive)
-            inner += _build_section(f"{tab_id}-distribution", "Distribution Analysis", _section_distribution(s, figures), config.distribution)
-            inner += _build_section(f"{tab_id}-correlation", "Correlation Analysis", _section_correlation(s, figures), config.correlation)
-            inner += _build_section(f"{tab_id}-missing", "Missing Data", _section_missing(s, figures))
-            inner += _build_section(f"{tab_id}-outlier", "Outlier Detection", _section_outlier(s, figures), config.outlier)
-            inner += _build_section(f"{tab_id}-categorical", "Categorical Analysis", _section_categorical(s, figures), config.categorical)
-            inner += _build_section(f"{tab_id}-importance", "Feature Importance", _section_feature_importance(s, figures), config.feature_importance)
-            inner += _build_section(f"{tab_id}-pca", "PCA Analysis", _section_pca(s, figures), config.pca)
-            inner += _build_section(f"{tab_id}-duplicates", "Duplicates", _section_duplicates(s), config.duplicates)
-            inner += _build_section(f"{tab_id}-warnings", "Warnings", _section_warnings(sec_warnings), bool(sec_warnings))
+            # Build basic sections for this subset
+            basic_inner = ""
+            basic_inner += _build_section(f"{tab_id}-overview", "Overview", _section_overview(schema))
+            basic_inner += _build_section(f"{tab_id}-quality", "Data Quality", _section_quality(s), config.quality_score)
+            basic_inner += _build_section(f"{tab_id}-preprocessing", "Preprocessing", _section_preprocessing(s), config.preprocessing)
+            basic_inner += _build_section(f"{tab_id}-descriptive", "Descriptive Statistics", _section_descriptive(s, figures), config.descriptive)
+            basic_inner += _build_section(f"{tab_id}-distribution", "Distribution Analysis", _section_distribution(s, figures), config.distribution)
+            basic_inner += _build_section(f"{tab_id}-correlation", "Correlation Analysis", _section_correlation(s, figures), config.correlation)
+            basic_inner += _build_section(f"{tab_id}-missing", "Missing Data", _section_missing(s, figures))
+            basic_inner += _build_section(f"{tab_id}-outlier", "Outlier Detection", _section_outlier(s, figures), config.outlier)
+            basic_inner += _build_section(f"{tab_id}-categorical", "Categorical Analysis", _section_categorical(s, figures), config.categorical)
+            basic_inner += _build_section(f"{tab_id}-importance", "Feature Importance", _section_feature_importance(s, figures), config.feature_importance)
+            basic_inner += _build_section(f"{tab_id}-pca", "PCA Analysis", _section_pca(s, figures), config.pca)
+            basic_inner += _build_section(f"{tab_id}-duplicates", "Duplicates", _section_duplicates(s), config.duplicates)
+            basic_inner += _build_section(f"{tab_id}-warnings", "Warnings", _section_warnings(sec_warnings), bool(sec_warnings))
+
+            # Wrap with 2-depth sub-tabs
+            inner = _build_sub_tabs(tab_id, basic_inner, s, figures, config)
 
             display = "block" if idx == 0 else "none"
             tab_contents.append(
@@ -919,13 +1383,13 @@ class ReportGenerator:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>f2a Report - {dataset_name}</title>
+<title>f2a Report - {html_mod.escape(dataset_name)}</title>
 <style>{_CSS}</style>
 </head>
 <body>
 <div class="header">
     <h1>f2a Analysis Report</h1>
-    <p>{dataset_name}</p>
+    <p>{html_mod.escape(dataset_name)}</p>
 </div>
 <div class="main">
     <div class="summary-bar">
@@ -944,6 +1408,7 @@ function openTab(evt, tabId) {{
     evt.currentTarget.classList.add('active');
 }}
 </script>
+<script>{_SUB_TAB_JS}</script>
 <script>{_DRAG_SCROLL_JS}</script>
 <script>{_TOOLTIP_JS}</script>
 </body>

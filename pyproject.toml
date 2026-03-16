@@ -46,6 +46,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+advanced = [
+    "networkx>=3.0",
+    "umap-learn>=0.5",
+    "statsmodels>=0.14",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

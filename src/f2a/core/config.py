@@ -67,6 +67,50 @@ class AnalysisConfig:
     max_plot_columns: int = 20
     """Maximum columns per plot grid (prevents overly large figures)."""
 
+    # ── Advanced analysis ─────────────────────────────────
+    advanced: bool = True
+    """Enable the Advanced analysis tab (clustering, anomaly, etc.)."""
+
+    advanced_distribution: bool = True
+    """Best-fit distribution, power transform, Jarque-Bera, ECDF."""
+
+    advanced_correlation: bool = True
+    """Partial correlation, MI matrix, bootstrap CI, network graph."""
+
+    clustering: bool = True
+    """K-Means, DBSCAN, hierarchical clustering."""
+
+    advanced_dimreduction: bool = True
+    """t-SNE, UMAP (optional), Factor Analysis."""
+
+    feature_insights: bool = True
+    """Interaction, monotonic, binning, cardinality, leakage detection."""
+
+    advanced_anomaly: bool = True
+    """Isolation Forest, LOF, Mahalanobis, consensus."""
+
+    statistical_tests: bool = True
+    """Levene, Kruskal-Wallis, Mann-Whitney, goodness-of-fit, Grubbs."""
+
+    data_profiling: bool = True
+    """Automated insights, type recommendation, health dashboard."""
+
+    # ── Advanced sub-options ──────────────────────────────
+    max_cluster_k: int = 10
+    """Maximum k for K-Means elbow search."""
+
+    tsne_perplexity: float = 30.0
+    """t-SNE perplexity parameter."""
+
+    bootstrap_iterations: int = 1000
+    """Number of bootstrap resamples for correlation CI."""
+
+    max_sample_for_advanced: int = 5000
+    """Max rows sampled for expensive advanced analyses (t-SNE, UMAP, etc.)."""
+
+    n_distribution_fits: int = 7
+    """Number of candidate distributions to fit."""
+
     @staticmethod
     def minimal() -> "AnalysisConfig":
         """Return a config with only core analyses (descriptive + missing)."""
@@ -80,12 +124,19 @@ class AnalysisConfig:
             pca=False,
             duplicates=False,
             quality_score=False,
+            advanced=False,
         )
 
     @staticmethod
     def fast() -> "AnalysisConfig":
-        """Return a config that skips expensive analyses (PCA, feature importance)."""
+        """Return a config that skips expensive analyses (PCA, feature importance, advanced)."""
         return AnalysisConfig(
             pca=False,
             feature_importance=False,
+            advanced=False,
         )
+
+    @staticmethod
+    def basic_only() -> "AnalysisConfig":
+        """Return a config with all Basic analyses on, all Advanced off."""
+        return AnalysisConfig(advanced=False)
