@@ -7,7 +7,9 @@ and report generation into a single ``analyze()`` entry point.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -440,6 +442,8 @@ class AnalysisReport:
     warnings: list[str] = field(default_factory=list)
     subsets: list[SubsetReport] = field(default_factory=list)
     config: AnalysisConfig = field(default_factory=AnalysisConfig)
+    analysis_started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    analysis_duration_sec: float = 0.0
 
     # -- Console output ---------------------------------------------------
 
@@ -526,7 +530,8 @@ class AnalysisReport:
         generator = ReportGenerator()
         safe_name = re.sub(r'[<>:"/\\|?*]', "_", self.dataset_name)
         safe_name = safe_name.strip(". ")[:120] or "report"
-        output_path = Path(output_dir) / f"{safe_name}_report.html"
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = Path(output_dir) / f"{safe_name}_{ts}_report.html"
 
         if self.subsets:
             subset_sections = self._build_subset_sections()
@@ -535,6 +540,8 @@ class AnalysisReport:
                 dataset_name=self.dataset_name,
                 sections=subset_sections,
                 config=self.config,
+                analysis_started_at=self.analysis_started_at,
+                analysis_duration_sec=self.analysis_duration_sec,
             )
         else:
             report_data = self._build_single_report_data()
@@ -551,6 +558,8 @@ class AnalysisReport:
             "figures": figures,
             "warnings": self.warnings,
             "config": self.config,
+            "analysis_started_at": self.analysis_started_at,
+            "analysis_duration_sec": self.analysis_duration_sec,
         }
 
     def _build_subset_sections(self) -> list[dict[str, Any]]:
@@ -827,6 +836,9 @@ class Analyzer:
     def _run_single(
         self, source: str, df: pd.DataFrame, config: AnalysisConfig,
     ) -> AnalysisReport:
+        t0 = time.perf_counter()
+        started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
         schema = infer_schema(df)
         logger.info("Schema inference complete: %s", schema.summary_dict())
 
@@ -843,6 +855,7 @@ class Analyzer:
         )
         viz = VizResult(_df=viz_df, _schema=viz_schema, _config=config, _stats=stats)
 
+        elapsed = round(time.perf_counter() - t0, 2)
         report = AnalysisReport(
             dataset_name=dataset_name,
             shape=(len(df), len(df.columns)),
@@ -851,8 +864,10 @@ class Analyzer:
             viz=viz,
             warnings=warnings,
             config=config,
+            analysis_started_at=started_at,
+            analysis_duration_sec=elapsed,
         )
-        logger.info("Analysis complete: %s", source)
+        logger.info("Analysis complete: %s (%.2fs)", source, elapsed)
         return report
 
     # -- Multi-subset ------------------------------------------------------
@@ -860,6 +875,9 @@ class Analyzer:
     def _run_multi_subset(
         self, source: str, df: pd.DataFrame, config: AnalysisConfig,
     ) -> AnalysisReport:
+        t0 = time.perf_counter()
+        started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
         groups = df.groupby(["__subset__", "__split__"], sort=False)
 
         subset_reports: list[SubsetReport] = []
@@ -895,6 +913,7 @@ class Analyzer:
         first = subset_reports[0]
         total_rows = sum(sr.shape[0] for sr in subset_reports)
 
+        elapsed = round(time.perf_counter() - t0, 2)
         report = AnalysisReport(
             dataset_name=source,
             shape=(total_rows, first.shape[1]),
@@ -904,10 +923,12 @@ class Analyzer:
             warnings=all_warnings,
             subsets=subset_reports,
             config=config,
+            analysis_started_at=started_at,
+            analysis_duration_sec=elapsed,
         )
         logger.info(
-            "Multi-subset analysis complete: %s (%d subsets, %d total rows)",
-            source, len(subset_reports), total_rows,
+            "Multi-subset analysis complete: %s (%d subsets, %d total rows, %.2fs)",
+            source, len(subset_reports), total_rows, elapsed,
         )
         return report
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import html as html_mod
 import io
+import json
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from f2a.core.config import AnalysisConfig
+from f2a.report.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, DEFAULT_LANG, t
 from f2a.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -453,6 +455,21 @@ footer { text-align: center; margin-top: 40px; padding: 20px; color: #aaa; font-
 .f2a-tooltip .tip-value { color: #f9e79f; font-weight: 600; }
 [data-tip] { cursor: help; }
 th[data-tip] { text-decoration: underline dotted rgba(0,0,0,0.25); text-underline-offset: 3px; }
+/* Language selector */
+.lang-selector {
+    position: absolute; top: 24px; right: 30px;
+    display: flex; align-items: center; gap: 8px;
+}
+.lang-selector label { font-size: 0.85em; opacity: 0.85; color: #fff; }
+.lang-selector select {
+    background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 6px; padding: 4px 10px; font-size: 0.85em; cursor: pointer;
+    backdrop-filter: blur(4px);
+}
+.lang-selector select option { color: #333; background: #fff; }
+/* Analysis timing */
+.analysis-meta { font-size: 0.88em; opacity: 0.8; margin-top: 4px; }
+.header { position: relative; }
 """
 
 _DRAG_SCROLL_JS = """
@@ -632,6 +649,40 @@ document.addEventListener('DOMContentLoaded', function() {
 """
 
 
+def _build_i18n_js(translations_json: str) -> str:
+    """Build the i18n JavaScript that handles language switching."""
+    return f"""
+var _F2A_I18N = {translations_json};
+var _f2aLang = 'en';
+function f2aSetLang(lang) {{
+    if (!_F2A_I18N[lang]) lang = 'en';
+    _f2aLang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(function(el) {{
+        var key = el.getAttribute('data-i18n');
+        var text = _F2A_I18N[lang][key] || _F2A_I18N['en'][key] || key;
+        if (el.hasAttribute('data-i18n-html')) {{
+            el.innerHTML = text;
+        }} else {{
+            el.textContent = text;
+        }}
+    }});
+    document.querySelectorAll('[data-i18n-title]').forEach(function(el) {{
+        var key = el.getAttribute('data-i18n-title');
+        var text = _F2A_I18N[lang][key] || _F2A_I18N['en'][key] || key;
+        document.title = text;
+    }});
+    var sel = document.getElementById('f2a-lang-select');
+    if (sel) sel.value = lang;
+}}
+document.addEventListener('DOMContentLoaded', function() {{
+    var sel = document.getElementById('f2a-lang-select');
+    if (sel) {{
+        sel.addEventListener('change', function() {{ f2aSetLang(this.value); }});
+    }}
+}});
+"""
+
+
 # =====================================================================
 #  Section builders
 # =====================================================================
@@ -698,13 +749,15 @@ def _build_section(
     title: str,
     body: str,
     condition: bool = True,
+    i18n_key: str = "",
 ) -> str:
     """Wrap body content in a <section> element."""
     if not condition or not body.strip():
         return ""
+    i18n_attr = f' data-i18n="{i18n_key}"' if i18n_key else ""
     return (
         f'<section id="{section_id}">'
-        f'<h2 class="section-title">{title}</h2>'
+        f'<h2 class="section-title"{i18n_attr}>{title}</h2>'
         f'{body}</section>'
     )
 
@@ -732,7 +785,7 @@ def _section_overview(schema_summary: dict[str, Any]) -> str:
 def _section_quality(stats: Any) -> str:
     body = _build_quality_bars(stats.quality_scores)
     if not stats.quality_by_column.empty:
-        body += '<h3 class="section-subtitle">Column Quality</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_column_quality">Column Quality</h3>'
         body += _wrap_table(_df_to_html(stats.quality_by_column))
     return body
 
@@ -751,12 +804,12 @@ def _section_preprocessing(stats: Any) -> str:
     })
     body += "</div>"
     if pp.cleaning_log:
-        body += '<h3 class="section-subtitle">Cleaning Log</h3><ul class="log-list">'
+        body += '<h3 class="section-subtitle" data-i18n="sub_cleaning_log">Cleaning Log</h3><ul class="log-list">'
         body += "".join(f"<li>{entry}</li>" for entry in pp.cleaning_log)
         body += "</ul>"
     issues = pp.issues_table()
     if not issues.empty:
-        body += '<h3 class="section-subtitle">Detected Issues</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_detected_issues">Detected Issues</h3>'
         body += _wrap_table(_df_to_html(issues))
     return body
 
@@ -778,7 +831,7 @@ def _section_descriptive(stats: Any, figures: dict) -> str:
 def _section_distribution(stats: Any, figures: dict) -> str:
     body = ""
     if not stats.distribution_info.empty:
-        body += '<h3 class="section-subtitle">Normality Tests & Shape</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_normality_tests">Normality Tests &amp; Shape</h3>'
         body += _wrap_table(_df_to_html(stats.distribution_info))
 
     chart_parts: dict[str, plt.Figure] = {}
@@ -800,7 +853,7 @@ def _section_correlation(stats: Any, figures: dict) -> str:
         body += _figures_to_html(chart_parts, grid=True)
 
     if not stats.vif_table.empty:
-        body += '<h3 class="section-subtitle">Variance Inflation Factor (VIF)</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_vif">Variance Inflation Factor (VIF)</h3>'
         body += _wrap_table(_df_to_html(stats.vif_table))
 
     return body
@@ -831,7 +884,7 @@ def _section_outlier(stats: Any, figures: dict) -> str:
 def _section_categorical(stats: Any, figures: dict) -> str:
     body = ""
     if not stats.categorical_analysis.empty:
-        body += '<h3 class="section-subtitle">Summary</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_summary">Summary</h3>'
         body += _wrap_table(_df_to_html(stats.categorical_analysis))
     chart_parts: dict[str, plt.Figure] = {}
     for key in ("Categorical Frequency", "Chi-Square Heatmap"):
@@ -856,10 +909,10 @@ def _section_pca(stats: Any, figures: dict) -> str:
     if stats.pca_summary:
         body += '<div class="cards">' + _dict_to_cards(stats.pca_summary) + "</div>"
     if not stats.pca_variance.empty:
-        body += '<h3 class="section-subtitle">Variance Explained</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_variance_explained">Variance Explained</h3>'
         body += _wrap_table(_df_to_html(stats.pca_variance))
     if not stats.pca_loadings.empty:
-        body += '<h3 class="section-subtitle">Loadings</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_loadings">Loadings</h3>'
         body += _wrap_table(_df_to_html(stats.pca_loadings))
     chart_parts: dict[str, plt.Figure] = {}
     for key in ("PCA Scree Plot", "PCA Loadings"):
@@ -894,19 +947,19 @@ def _section_adv_distribution(stats: Any, figures: dict[str, plt.Figure]) -> str
     body = ""
     bf = adv.get("best_fit")
     if bf is not None and not bf.empty:
-        body += '<h3 class="section-subtitle">Best-Fit Distribution</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_best_fit">Best-Fit Distribution</h3>'
         body += _wrap_table(_df_to_html(bf))
     jb = adv.get("jarque_bera")
     if jb is not None and not jb.empty:
-        body += '<h3 class="section-subtitle">Jarque-Bera Normality Test</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_jarque_bera">Jarque-Bera Normality Test</h3>'
         body += _wrap_table(_df_to_html(jb))
     pt = adv.get("power_transform")
     if pt is not None and not pt.empty:
-        body += '<h3 class="section-subtitle">Power Transform Recommendation</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_power_transform">Power Transform Recommendation</h3>'
         body += _wrap_table(_df_to_html(pt))
     kde = adv.get("kde_bandwidth")
     if kde is not None and not kde.empty:
-        body += '<h3 class="section-subtitle">KDE Bandwidth Analysis</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_kde_bandwidth">KDE Bandwidth Analysis</h3>'
         body += _wrap_table(_df_to_html(kde))
     chart_keys = [
         "Best-Fit Distribution Overlay", "ECDF Plot",
@@ -925,19 +978,19 @@ def _section_adv_correlation(stats: Any, figures: dict[str, plt.Figure]) -> str:
     body = ""
     pcorr = adv.get("partial_correlation")
     if pcorr is not None and not pcorr.empty:
-        body += '<h3 class="section-subtitle">Partial Correlation Matrix</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_partial_corr">Partial Correlation Matrix</h3>'
         body += _wrap_table(_df_to_html(pcorr))
     mi = adv.get("mutual_information")
     if mi is not None and not mi.empty:
-        body += '<h3 class="section-subtitle">Mutual Information Matrix</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_mutual_info">Mutual Information Matrix</h3>'
         body += _wrap_table(_df_to_html(mi))
     bci = adv.get("bootstrap_ci")
     if bci is not None and not bci.empty:
-        body += '<h3 class="section-subtitle">Bootstrap Correlation 95% CI</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_bootstrap_ci">Bootstrap Correlation 95% CI</h3>'
         body += _wrap_table(_df_to_html(bci))
     dc = adv.get("distance_correlation")
     if dc is not None and not dc.empty:
-        body += '<h3 class="section-subtitle">Distance Correlation Matrix</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_distance_corr">Distance Correlation Matrix</h3>'
         body += _wrap_table(_df_to_html(dc))
     chart_keys = [
         "Partial Correlation Heatmap", "Mutual Information Heatmap",
@@ -957,7 +1010,7 @@ def _section_clustering(stats: Any, figures: dict[str, plt.Figure]) -> str:
     body = ""
     km = adv.get("kmeans")
     if km:
-        body += '<h3 class="section-subtitle">K-Means Summary</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_kmeans">K-Means Summary</h3>'
         summary_cards = {
             "optimal_k": km.get("optimal_k"),
             "best_silhouette": km.get("best_silhouette"),
@@ -968,7 +1021,7 @@ def _section_clustering(stats: Any, figures: dict[str, plt.Figure]) -> str:
         body += '<div class="cards">' + _dict_to_cards(summary_cards) + "</div>"
     db = adv.get("dbscan")
     if db:
-        body += '<h3 class="section-subtitle">DBSCAN Summary</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_dbscan">DBSCAN Summary</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "n_clusters_dbscan": db.get("n_clusters", 0),
             "noise_ratio": db.get("noise_ratio", 0),
@@ -976,14 +1029,14 @@ def _section_clustering(stats: Any, figures: dict[str, plt.Figure]) -> str:
         }) + "</div>"
     hc = adv.get("hierarchical")
     if hc:
-        body += '<h3 class="section-subtitle">Hierarchical Clustering</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_hierarchical">Hierarchical Clustering</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "optimal_k": hc.get("optimal_k"),
             "best_silhouette": hc.get("silhouette_score"),
         }) + "</div>"
     profiles = adv.get("profiles")
     if profiles is not None and not profiles.empty:
-        body += '<h3 class="section-subtitle">Cluster Profiles</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_cluster_profiles">Cluster Profiles</h3>'
         body += _wrap_table(_df_to_html(profiles))
     chart_keys = ["Elbow & Silhouette", "Cluster Scatter", "Dendrogram", "Cluster Profiles"]
     chart_parts: dict[str, plt.Figure] = {k: figures[k] for k in chart_keys if k in figures}
@@ -999,30 +1052,30 @@ def _section_dimreduction(stats: Any, figures: dict[str, plt.Figure]) -> str:
     body = ""
     tsne = adv.get("tsne")
     if tsne:
-        body += '<h3 class="section-subtitle">t-SNE Embedding</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_tsne">t-SNE Embedding</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "kl_divergence": tsne.get("kl_divergence", 0),
             "n_points": tsne.get("n_samples", 0),
         }) + "</div>"
     umap_res = adv.get("umap")
     if umap_res:
-        body += '<h3 class="section-subtitle">UMAP Embedding</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_umap">UMAP Embedding</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "n_points": umap_res.get("n_samples", 0),
         }) + "</div>"
     fa = adv.get("factor_analysis")
     if fa:
-        body += '<h3 class="section-subtitle">Factor Analysis</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_factor_analysis">Factor Analysis</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "n_factors": fa.get("n_factors", 0),
         }) + "</div>"
     loadings = adv.get("factor_loadings")
     if loadings is not None and not loadings.empty:
-        body += '<h3 class="section-subtitle">Factor Loadings</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_factor_loadings">Factor Loadings</h3>'
         body += _wrap_table(_df_to_html(loadings))
     fc = adv.get("feature_contribution")
     if fc is not None and not fc.empty:
-        body += '<h3 class="section-subtitle">PCA-Weighted Feature Contribution</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_feature_contrib">PCA-Weighted Feature Contribution</h3>'
         body += _wrap_table(_df_to_html(fc))
     return body
 
@@ -1034,23 +1087,23 @@ def _section_feature_insights(stats: Any, figures: dict[str, plt.Figure]) -> str
     body = ""
     interact = adv.get("interactions")
     if interact is not None and not interact.empty:
-        body += '<h3 class="section-subtitle">Interaction Detection</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_interaction">Interaction Detection</h3>'
         body += _wrap_table(_df_to_html(interact))
     mono = adv.get("monotonic")
     if mono is not None and not mono.empty:
-        body += '<h3 class="section-subtitle">Monotonic Relationship Analysis</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_monotonic">Monotonic Relationship Analysis</h3>'
         body += _wrap_table(_df_to_html(mono))
     binning = adv.get("binning")
     if binning is not None and not binning.empty:
-        body += '<h3 class="section-subtitle">Binning Analysis</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_binning">Binning Analysis</h3>'
         body += _wrap_table(_df_to_html(binning))
     card = adv.get("cardinality")
     if card is not None and not card.empty:
-        body += '<h3 class="section-subtitle">Cardinality & Encoding Recommendation</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_cardinality">Cardinality &amp; Encoding Recommendation</h3>'
         body += _wrap_table(_df_to_html(card))
     leak = adv.get("leakage")
     if leak is not None and not leak.empty:
-        body += '<h3 class="section-subtitle">Leakage Risk Assessment</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_leakage">Leakage Risk Assessment</h3>'
         body += _wrap_table(_df_to_html(leak))
     return body
 
@@ -1062,28 +1115,28 @@ def _section_adv_anomaly(stats: Any, figures: dict[str, plt.Figure]) -> str:
     body = ""
     iso = adv.get("isolation_forest")
     if iso:
-        body += '<h3 class="section-subtitle">Isolation Forest</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_iso_forest">Isolation Forest</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "anomaly_count": iso.get("anomaly_count", 0),
             "anomaly_ratio": iso.get("anomaly_ratio", 0),
         }) + "</div>"
     lof = adv.get("local_outlier_factor")
     if lof:
-        body += '<h3 class="section-subtitle">Local Outlier Factor</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_lof">Local Outlier Factor</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "anomaly_count": lof.get("anomaly_count", 0),
             "anomaly_ratio": lof.get("anomaly_ratio", 0),
         }) + "</div>"
     maha = adv.get("mahalanobis")
     if maha:
-        body += '<h3 class="section-subtitle">Mahalanobis Distance</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_mahalanobis">Mahalanobis Distance</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "anomaly_count": maha.get("anomaly_count", 0),
             "anomaly_ratio": maha.get("anomaly_ratio", 0),
         }) + "</div>"
     cons = adv.get("consensus")
     if cons:
-        body += '<h3 class="section-subtitle">Consensus (≥2/3 agree)</h3>'
+        body += '<h3 class="section-subtitle" data-i18n="sub_consensus">Consensus (≥2/3 agree)</h3>'
         body += '<div class="cards">' + _dict_to_cards({
             "consensus_count": cons.get("consensus_count", 0),
             "consensus_ratio": cons.get("consensus_ratio", 0),
@@ -1100,20 +1153,20 @@ def _section_stat_tests(stats: Any, figures: dict[str, plt.Figure]) -> str:
     if not adv:
         return ""
     body = ""
-    for key, title in [
-        ("levene", "Levene's Test (Equality of Variances)"),
-        ("kruskal_wallis", "Kruskal-Wallis Test"),
-        ("mann_whitney", "Mann-Whitney U Test"),
-        ("chi_square_goodness", "Chi-Square Goodness of Fit"),
-        ("grubbs", "Grubbs Outlier Test"),
-        ("adf", "Augmented Dickey-Fuller (Stationarity)"),
+    for key, title, i18n_key in [
+        ("levene", "Levene's Test (Equality of Variances)", "test_levene"),
+        ("kruskal_wallis", "Kruskal-Wallis Test", "test_kruskal_wallis"),
+        ("mann_whitney", "Mann-Whitney U Test", "test_mann_whitney"),
+        ("chi_square_goodness", "Chi-Square Goodness of Fit", "test_chi_square"),
+        ("grubbs", "Grubbs Outlier Test", "test_grubbs"),
+        ("adf", "Augmented Dickey-Fuller (Stationarity)", "test_adf"),
     ]:
         data = adv.get(key)
         if data is not None and isinstance(data, pd.DataFrame) and not data.empty:
-            body += f'<h3 class="section-subtitle">{title}</h3>'
+            body += f'<h3 class="section-subtitle" data-i18n="{i18n_key}">{title}</h3>'
             body += _wrap_table(_df_to_html(data))
         elif data is not None and isinstance(data, dict) and data:
-            body += f'<h3 class="section-subtitle">{title}</h3>'
+            body += f'<h3 class="section-subtitle" data-i18n="{i18n_key}">{title}</h3>'
             body += '<div class="cards">' + _dict_to_cards(data) + "</div>"
     return body
 
@@ -1130,19 +1183,19 @@ def _section_data_profiling(stats: Any, figures: dict[str, plt.Figure]) -> str:
 # =====================================================================
 
 _SECTION_ORDER = [
-    ("overview", "Overview"),
-    ("quality", "Quality"),
-    ("preprocessing", "Preprocessing"),
-    ("descriptive", "Descriptive"),
-    ("distribution", "Distribution"),
-    ("correlation", "Correlation"),
-    ("missing", "Missing Data"),
-    ("outlier", "Outliers"),
-    ("categorical", "Categorical"),
-    ("importance", "Feature Importance"),
-    ("pca", "PCA"),
-    ("duplicates", "Duplicates"),
-    ("warnings-section", "Warnings"),
+    ("overview", "Overview", "nav_overview"),
+    ("quality", "Quality", "nav_quality"),
+    ("preprocessing", "Preprocessing", "nav_preprocessing"),
+    ("descriptive", "Descriptive", "nav_descriptive"),
+    ("distribution", "Distribution", "nav_distribution"),
+    ("correlation", "Correlation", "nav_correlation"),
+    ("missing", "Missing Data", "nav_missing"),
+    ("outlier", "Outliers", "nav_outlier"),
+    ("categorical", "Categorical", "nav_categorical"),
+    ("importance", "Feature Importance", "nav_importance"),
+    ("pca", "PCA", "nav_pca"),
+    ("duplicates", "Duplicates", "nav_duplicates"),
+    ("warnings-section", "Warnings", "nav_warnings"),
 ]
 
 _ADV_SUB_TABS = [
@@ -1177,22 +1230,31 @@ def _build_sub_tabs(
         return basic_html
 
     # Build advanced tab contents
-    adv_builders: list[tuple[str, str, str, Any]] = [
+    # (key, tab_label, section_title, tab_i18n_key, section_i18n_key, builder_fn)
+    adv_builders: list[tuple[str, str, str, str, str, Any]] = [
         ("adv-dist", "Distribution+", "Advanced Distribution Analysis",
+         "tab_adv_dist", "adv_distribution",
          lambda: _section_adv_distribution(stats, figures)),
         ("adv-corr", "Correlation+", "Advanced Correlation Analysis",
+         "tab_adv_corr", "adv_correlation",
          lambda: _section_adv_correlation(stats, figures)),
         ("clustering", "Clustering", "Clustering Analysis",
+         "tab_clustering", "adv_clustering",
          lambda: _section_clustering(stats, figures)),
         ("dimreduction", "Dim. Reduction", "Dimensionality Reduction",
+         "tab_dimreduction", "adv_dimreduction",
          lambda: _section_dimreduction(stats, figures)),
         ("feat-insights", "Feature Insights", "Feature Engineering Insights",
+         "tab_feat_insights", "adv_feat_insights",
          lambda: _section_feature_insights(stats, figures)),
         ("adv-anomaly", "Anomaly+", "Advanced Anomaly Detection",
+         "tab_adv_anomaly", "adv_anomaly",
          lambda: _section_adv_anomaly(stats, figures)),
         ("stat-tests", "Stat Tests", "Statistical Tests",
+         "tab_stat_tests", "adv_stat_tests",
          lambda: _section_stat_tests(stats, figures)),
         ("data-profile", "Data Profile", "Data Profiling Summary",
+         "tab_data_profile", "adv_data_profile",
          lambda: _section_data_profiling(stats, figures)),
     ]
 
@@ -1200,14 +1262,14 @@ def _build_sub_tabs(
     basic_tab_id = f"{prefix}-basic"
 
     buttons: list[str] = [
-        f'<button class="sub-tab-btn active" '
+        f'<button class="sub-tab-btn active" data-i18n="tab_basic" '
         f"""onclick="openSubTab(event, '{basic_tab_id}', '{group_id}')">Basic</button>"""
     ]
     contents: list[str] = [
         f'<div id="{basic_tab_id}" class="sub-tab-content active">{basic_html}</div>'
     ]
 
-    for key, label, section_title, builder_fn in adv_builders:
+    for key, label, section_title, tab_i18n, section_i18n, builder_fn in adv_builders:
         tab_id = f"{prefix}-{key}"
         try:
             body = builder_fn()
@@ -1216,11 +1278,11 @@ def _build_sub_tabs(
         if not body.strip():
             continue
         wrapped = (
-            f'<section><h2 class="section-title">{section_title}'
+            f'<section><h2 class="section-title" data-i18n="{section_i18n}">{section_title}'
             f'<span class="adv-badge">ADV</span></h2>{body}</section>'
         )
         buttons.append(
-            f'<button class="sub-tab-btn adv" '
+            f'<button class="sub-tab-btn adv" data-i18n="{tab_i18n}" '
             f"""onclick="openSubTab(event, '{tab_id}', '{group_id}')">{label}</button>"""
         )
         contents.append(
@@ -1255,54 +1317,89 @@ class ReportGenerator:
         figures: dict[str, plt.Figure],
         warnings: list[str] | None = None,
         config: AnalysisConfig | None = None,
+        analysis_started_at: str = "",
+        analysis_duration_sec: float = 0.0,
     ) -> str:
         """Generate a full HTML report string."""
         warnings = warnings or []
         config = config or AnalysisConfig()
 
-        # Build basic sections
+        # Build basic sections with i18n keys
         basic_sections = ""
-        basic_sections += _build_section("overview", "Overview", _section_overview(schema_summary))
-        basic_sections += _build_section("quality", "Data Quality", _section_quality(stats), config.quality_score)
-        basic_sections += _build_section("preprocessing", "Preprocessing", _section_preprocessing(stats), config.preprocessing)
-        basic_sections += _build_section("descriptive", "Descriptive Statistics", _section_descriptive(stats, figures), config.descriptive)
-        basic_sections += _build_section("distribution", "Distribution Analysis", _section_distribution(stats, figures), config.distribution)
-        basic_sections += _build_section("correlation", "Correlation Analysis", _section_correlation(stats, figures), config.correlation)
-        basic_sections += _build_section("missing", "Missing Data Analysis", _section_missing(stats, figures))
-        basic_sections += _build_section("outlier", "Outlier Detection", _section_outlier(stats, figures), config.outlier)
-        basic_sections += _build_section("categorical", "Categorical Analysis", _section_categorical(stats, figures), config.categorical)
-        basic_sections += _build_section("importance", "Feature Importance", _section_feature_importance(stats, figures), config.feature_importance)
-        basic_sections += _build_section("pca", "PCA Analysis", _section_pca(stats, figures), config.pca)
-        basic_sections += _build_section("duplicates", "Duplicate Analysis", _section_duplicates(stats), config.duplicates)
-        basic_sections += _build_section("warnings-section", "Warnings", _section_warnings(warnings), bool(warnings))
+        basic_sections += _build_section("overview", "Overview", _section_overview(schema_summary), i18n_key="section_overview")
+        basic_sections += _build_section("quality", "Data Quality", _section_quality(stats), config.quality_score, i18n_key="section_quality")
+        basic_sections += _build_section("preprocessing", "Preprocessing", _section_preprocessing(stats), config.preprocessing, i18n_key="section_preprocessing")
+        basic_sections += _build_section("descriptive", "Descriptive Statistics", _section_descriptive(stats, figures), config.descriptive, i18n_key="section_descriptive")
+        basic_sections += _build_section("distribution", "Distribution Analysis", _section_distribution(stats, figures), config.distribution, i18n_key="section_distribution")
+        basic_sections += _build_section("correlation", "Correlation Analysis", _section_correlation(stats, figures), config.correlation, i18n_key="section_correlation")
+        basic_sections += _build_section("missing", "Missing Data Analysis", _section_missing(stats, figures), i18n_key="section_missing")
+        basic_sections += _build_section("outlier", "Outlier Detection", _section_outlier(stats, figures), config.outlier, i18n_key="section_outlier")
+        basic_sections += _build_section("categorical", "Categorical Analysis", _section_categorical(stats, figures), config.categorical, i18n_key="section_categorical")
+        basic_sections += _build_section("importance", "Feature Importance", _section_feature_importance(stats, figures), config.feature_importance, i18n_key="section_importance")
+        basic_sections += _build_section("pca", "PCA Analysis", _section_pca(stats, figures), config.pca, i18n_key="section_pca")
+        basic_sections += _build_section("duplicates", "Duplicate Analysis", _section_duplicates(stats), config.duplicates, i18n_key="section_duplicates")
+        basic_sections += _build_section("warnings-section", "Warnings", _section_warnings(warnings), bool(warnings), i18n_key="section_warnings")
 
         # Wrap with 2-depth sub-tabs (Basic / Advanced categories)
         sections_html = _build_sub_tabs("single", basic_sections, stats, figures, config)
 
         nav_links = "".join(
-            f'<a href="#{sid}">{label}</a>' for sid, label in _SECTION_ORDER
+            f'<a href="#{sid}" data-i18n="{i18n_key}">{label}</a>'
+            for sid, label, i18n_key in _SECTION_ORDER
         )
         rows = schema_summary.get("rows", 0)
         cols = schema_summary.get("columns", 0)
+
+        # Language selector
+        lang_options = "".join(
+            f'<option value="{l["code"]}"{"selected" if l["code"] == DEFAULT_LANG else ""}>'
+            f'{l["label"]}</option>'
+            for l in SUPPORTED_LANGUAGES
+        )
+        lang_selector = (
+            '<div class="lang-selector">'
+            f'<label data-i18n="language">Language</label> '
+            f'<select id="f2a-lang-select">{lang_options}</select>'
+            '</div>'
+        )
+
+        # Analysis meta (timing)
+        meta_html = ""
+        if analysis_started_at:
+            dur = f"{analysis_duration_sec:.1f}s" if analysis_duration_sec else ""
+            meta_html = (
+                '<div class="analysis-meta">'
+                f'<span data-i18n="analysis_time">Analysis Time</span>: {html_mod.escape(analysis_started_at)}'
+                + (f' &mdash; <span data-i18n="duration">Duration</span>: {dur}' if dur else "")
+                + '</div>'
+            )
+
+        # i18n JS
+        i18n_js = _build_i18n_js(json.dumps(TRANSLATIONS, ensure_ascii=False))
 
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>f2a Report - {html_mod.escape(dataset_name)}</title>
+<title data-i18n-title="page_title">f2a Report - {html_mod.escape(dataset_name)}</title>
 <style>{_CSS}</style>
 </head>
 <body>
 <div class="header">
-    <h1>f2a Analysis Report</h1>
-    <p>{html_mod.escape(dataset_name)} &mdash; {rows:,} rows x {cols} columns</p>
+    {lang_selector}
+    <h1 data-i18n="report_header">f2a Analysis Report</h1>
+    <p>{html_mod.escape(dataset_name)} &mdash;
+       <span>{rows:,}</span> <span data-i18n="rows">rows</span> x
+       <span>{cols}</span> <span data-i18n="columns">columns</span></p>
+    {meta_html}
 </div>
 <nav class="topnav">{nav_links}</nav>
 <div class="main">
 {sections_html}
 </div>
-<footer>Generated by <strong>f2a</strong> (File to Analysis)</footer>
+<footer data-i18n="footer_text" data-i18n-html="1">Generated by <strong>f2a</strong> (File to Analysis)</footer>
+<script>{i18n_js}</script>
 <script>{_SUB_TAB_JS}</script>
 <script>{_DRAG_SCROLL_JS}</script>
 <script>{_NAV_SCROLL_JS}</script>
@@ -1327,6 +1424,8 @@ class ReportGenerator:
         dataset_name: str,
         sections: list[dict[str, Any]],
         config: AnalysisConfig | None = None,
+        analysis_started_at: str = "",
+        analysis_duration_sec: float = 0.0,
     ) -> str:
         """Generate a multi-subset tabbed HTML report."""
         config = config or AnalysisConfig()
@@ -1349,21 +1448,21 @@ class ReportGenerator:
             schema = sec["schema_summary"]
             sec_warnings = sec.get("warnings", [])
 
-            # Build basic sections for this subset
+            # Build basic sections for this subset (with i18n keys)
             basic_inner = ""
-            basic_inner += _build_section(f"{tab_id}-overview", "Overview", _section_overview(schema))
-            basic_inner += _build_section(f"{tab_id}-quality", "Data Quality", _section_quality(s), config.quality_score)
-            basic_inner += _build_section(f"{tab_id}-preprocessing", "Preprocessing", _section_preprocessing(s), config.preprocessing)
-            basic_inner += _build_section(f"{tab_id}-descriptive", "Descriptive Statistics", _section_descriptive(s, figures), config.descriptive)
-            basic_inner += _build_section(f"{tab_id}-distribution", "Distribution Analysis", _section_distribution(s, figures), config.distribution)
-            basic_inner += _build_section(f"{tab_id}-correlation", "Correlation Analysis", _section_correlation(s, figures), config.correlation)
-            basic_inner += _build_section(f"{tab_id}-missing", "Missing Data", _section_missing(s, figures))
-            basic_inner += _build_section(f"{tab_id}-outlier", "Outlier Detection", _section_outlier(s, figures), config.outlier)
-            basic_inner += _build_section(f"{tab_id}-categorical", "Categorical Analysis", _section_categorical(s, figures), config.categorical)
-            basic_inner += _build_section(f"{tab_id}-importance", "Feature Importance", _section_feature_importance(s, figures), config.feature_importance)
-            basic_inner += _build_section(f"{tab_id}-pca", "PCA Analysis", _section_pca(s, figures), config.pca)
-            basic_inner += _build_section(f"{tab_id}-duplicates", "Duplicates", _section_duplicates(s), config.duplicates)
-            basic_inner += _build_section(f"{tab_id}-warnings", "Warnings", _section_warnings(sec_warnings), bool(sec_warnings))
+            basic_inner += _build_section(f"{tab_id}-overview", "Overview", _section_overview(schema), i18n_key="section_overview")
+            basic_inner += _build_section(f"{tab_id}-quality", "Data Quality", _section_quality(s), config.quality_score, i18n_key="section_quality")
+            basic_inner += _build_section(f"{tab_id}-preprocessing", "Preprocessing", _section_preprocessing(s), config.preprocessing, i18n_key="section_preprocessing")
+            basic_inner += _build_section(f"{tab_id}-descriptive", "Descriptive Statistics", _section_descriptive(s, figures), config.descriptive, i18n_key="section_descriptive")
+            basic_inner += _build_section(f"{tab_id}-distribution", "Distribution Analysis", _section_distribution(s, figures), config.distribution, i18n_key="section_distribution")
+            basic_inner += _build_section(f"{tab_id}-correlation", "Correlation Analysis", _section_correlation(s, figures), config.correlation, i18n_key="section_correlation")
+            basic_inner += _build_section(f"{tab_id}-missing", "Missing Data", _section_missing(s, figures), i18n_key="section_missing")
+            basic_inner += _build_section(f"{tab_id}-outlier", "Outlier Detection", _section_outlier(s, figures), config.outlier, i18n_key="section_outlier")
+            basic_inner += _build_section(f"{tab_id}-categorical", "Categorical Analysis", _section_categorical(s, figures), config.categorical, i18n_key="section_categorical")
+            basic_inner += _build_section(f"{tab_id}-importance", "Feature Importance", _section_feature_importance(s, figures), config.feature_importance, i18n_key="section_importance")
+            basic_inner += _build_section(f"{tab_id}-pca", "PCA Analysis", _section_pca(s, figures), config.pca, i18n_key="section_pca")
+            basic_inner += _build_section(f"{tab_id}-duplicates", "Duplicates", _section_duplicates(s), config.duplicates, i18n_key="section_duplicates")
+            basic_inner += _build_section(f"{tab_id}-warnings", "Warnings", _section_warnings(sec_warnings), bool(sec_warnings), i18n_key="section_warnings")
 
             # Wrap with 2-depth sub-tabs
             inner = _build_sub_tabs(tab_id, basic_inner, s, figures, config)
@@ -1378,28 +1477,58 @@ class ReportGenerator:
         tabs_html = "\n".join(tab_buttons)
         content_html = "\n".join(tab_contents)
 
+        # Language selector
+        lang_options = "".join(
+            f'<option value="{l["code"]}"{"selected" if l["code"] == DEFAULT_LANG else ""}>'
+            f'{l["label"]}</option>'
+            for l in SUPPORTED_LANGUAGES
+        )
+        lang_selector = (
+            '<div class="lang-selector">'
+            f'<label data-i18n="language">Language</label> '
+            f'<select id="f2a-lang-select">{lang_options}</select>'
+            '</div>'
+        )
+
+        # Analysis meta (timing)
+        meta_html = ""
+        if analysis_started_at:
+            dur = f"{analysis_duration_sec:.1f}s" if analysis_duration_sec else ""
+            meta_html = (
+                '<div class="analysis-meta">'
+                f'<span data-i18n="analysis_time">Analysis Time</span>: {html_mod.escape(analysis_started_at)}'
+                + (f' &mdash; <span data-i18n="duration">Duration</span>: {dur}' if dur else "")
+                + '</div>'
+            )
+
+        # i18n JS
+        i18n_js = _build_i18n_js(json.dumps(TRANSLATIONS, ensure_ascii=False))
+
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>f2a Report - {html_mod.escape(dataset_name)}</title>
+<title data-i18n-title="page_title">f2a Report - {html_mod.escape(dataset_name)}</title>
 <style>{_CSS}</style>
 </head>
 <body>
 <div class="header">
-    <h1>f2a Analysis Report</h1>
+    {lang_selector}
+    <h1 data-i18n="report_header">f2a Analysis Report</h1>
     <p>{html_mod.escape(dataset_name)}</p>
+    {meta_html}
 </div>
 <div class="main">
     <div class="summary-bar">
-        Total: <strong>{total_rows:,}</strong> rows across
-        <strong>{len(sections)}</strong> subsets / splits
+        <span data-i18n="total_rows_across">Total: <strong>{total_rows:,}</strong> rows across
+        <strong>{len(sections)}</strong> subsets / splits</span>
     </div>
     <div class="tab-bar">{tabs_html}</div>
     {content_html}
 </div>
-<footer>Generated by <strong>f2a</strong> (File to Analysis)</footer>
+<footer data-i18n="footer_text" data-i18n-html="1">Generated by <strong>f2a</strong> (File to Analysis)</footer>
+<script>{i18n_js}</script>
 <script>
 function openTab(evt, tabId) {{
     document.querySelectorAll('.tab-content').forEach(function(el) {{ el.style.display = 'none'; }});
