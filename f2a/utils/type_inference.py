@@ -35,8 +35,12 @@ def infer_column_type(series: pd.Series) -> ColumnType:
         Inferred :class:`ColumnType`.
     """
     # Boolean check
-    if series.dtype == "bool" or set(series.dropna().unique()) <= {True, False, 0, 1}:
-        return ColumnType.BOOLEAN
+    try:
+        if series.dtype == "bool" or set(series.dropna().unique()) <= {True, False, 0, 1}:
+            return ColumnType.BOOLEAN
+    except TypeError:
+        # Column contains unhashable types (e.g. numpy arrays, lists)
+        return ColumnType.TEXT
 
     # Datetime check
     if pd.api.types.is_datetime64_any_dtype(series):

@@ -77,12 +77,17 @@ def infer_schema(df: pd.DataFrame) -> DataSchema:
 
     for col in df.columns:
         n_missing = int(df[col].isna().sum())
+        try:
+            n_unique = int(df[col].nunique())
+        except TypeError:
+            # Column contains unhashable types (e.g. numpy arrays, lists)
+            n_unique = len(df[col].dropna())
         columns.append(
             ColumnInfo(
                 name=col,
                 dtype=str(df[col].dtype),
                 inferred_type=type_map[col],
-                n_unique=int(df[col].nunique()),
+                n_unique=n_unique,
                 n_missing=n_missing,
                 missing_ratio=round(n_missing / len(df), 4) if len(df) > 0 else 0.0,
             )

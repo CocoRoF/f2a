@@ -11,6 +11,15 @@ from f2a.stats.outlier import OutlierStats
 from f2a.stats.pca_analysis import PCAStats
 from f2a.stats.quality import QualityStats
 
+# Advanced stats modules
+from f2a.stats.advanced_anomaly import AdvancedAnomalyStats
+from f2a.stats.advanced_correlation import AdvancedCorrelationStats
+from f2a.stats.advanced_dimreduction import AdvancedDimReductionStats
+from f2a.stats.advanced_distribution import AdvancedDistributionStats
+from f2a.stats.clustering import ClusteringStats
+from f2a.stats.feature_insights import FeatureInsightsStats
+from f2a.stats.statistical_tests import StatisticalTests
+
 __all__ = [
     "CategoricalStats",
     "CorrelationStats",
@@ -22,4 +31,12 @@ __all__ = [
     "OutlierStats",
     "PCAStats",
     "QualityStats",
+    # Advanced
+    "AdvancedAnomalyStats",
+    "AdvancedCorrelationStats",
+    "AdvancedDimReductionStats",
+    "AdvancedDistributionStats",
+    "ClusteringStats",
+    "FeatureInsightsStats",
+    "StatisticalTests",
 ]
