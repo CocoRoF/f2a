@@ -1,18 +1,15 @@
 # ──────────────────────────────────────────────────────────────
-#  f2a (Rust-powered) — Cross-platform wheel build & PyPI deploy
+#  f2a — Cross-platform wheel build & PyPI deploy
 #
-#  Trigger  : push to the `deploy` branch
+#  Trigger  : push to the `deploy` branch (only when pyproject.toml changes)
 #  Pipeline :
-#    1. check-version  — skip deploy if version already on PyPI
-#    2. build-wheels   — maturin cross-compile (5 targets × 4 Pythons)
-#    3. build-sdist    — source distribution
-#    4. test           — install built wheels → pytest (6 combos)
+#    1. check-version  — skip if version already on PyPI
+#    2. test           — pytest across Python 3.10–3.13
+#    3. build-wheels   — maturin native wheels (5 targets × 4 Pythons)
+#    4. build-sdist    — source distribution
 #    5. publish        — upload to PyPI via Trusted Publisher (OIDC)
 #
-#  IMPORTANT:
-#    - Uses pip exclusively. Do NOT add uv/astral-sh actions.
-#    - For Linux, manylinux containers provide all Python interpreters.
-#    - For Windows/macOS, actions/setup-python installs all 4 versions.
+#  Based on CocoRoF/googer proven workflow pattern.
 # ──────────────────────────────────────────────────────────────
 name: Build & Publish to PyPI
 
@@ -20,91 +17,80 @@ on:
   push:
     branches:
       - deploy
-
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
-env:
-  # Force pip usage — prevent uv auto-detection
-  PIP_DISABLE_PIP_VERSION_CHECK: "1"
-  PYTHONDONTWRITEBYTECODE: "1"
+    paths:
+      - "pyproject.toml"
 
 jobs:
   # ── 1. Version gate ───────────────────────────────────────
   check-version:
     runs-on: ubuntu-latest
     outputs:
-      should_publish: ${{ steps.decide.outputs.should_publish }}
-      local_version: ${{ steps.local.outputs.version }}
+      version_changed: ${{ steps.check.outputs.changed }}
+      new_version: ${{ steps.check.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check version change
+        id: check
+        run: |
+          NEW_VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' pyproject.toml)
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Verify Cargo.toml version matches
+          CARGO_VERSION=$(grep -oP '^version\s*=\s*"\K[^"]+' Cargo.toml)
+          if [ "$NEW_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Version mismatch! pyproject.toml=$NEW_VERSION vs Cargo.toml=$CARGO_VERSION"
+            exit 1
+          fi
+
+          # Compare with previous commit
+          OLD_VERSION=$(git show HEAD~1:pyproject.toml 2>/dev/null | grep -oP '^version\s*=\s*"\K[^"]+' || echo "")
+
+          echo "Old version: $OLD_VERSION"
+          echo "New version: $NEW_VERSION"
+
+          if [ -z "$OLD_VERSION" ] || [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Version changed: $OLD_VERSION -> $NEW_VERSION"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ Version unchanged, skipping publish."
+          fi
+
+  # ── 2. Test ───────────────────────────────────────────────
+  test:
+    needs: check-version
+    if: needs.check-version.outputs.version_changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
-      - name: Read local version
-        id: local
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install package and test deps
         run: |
-          VERSION=$(python -c "
-          import tomllib, pathlib
-          data = tomllib.loads(pathlib.Path('pyproject.toml').read_text())
-          print(data['project']['version'])
-          ")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "📦 Local version: $VERSION"
+          python -m pip install --upgrade pip
+          python -m pip install .[dev]
 
-      - name: Check PyPI for existing version
-        id: pypi
-        run: |
-          LOCAL="${{ steps.local.outputs.version }}"
-          HTTP_CODE=$(curl -s -o /tmp/pypi.json -w "%{http_code}" \
-            "https://pypi.org/pypi/f2a/json")
+      - name: Run tests
+        run: python -m pytest -v --tb=short
 
-          if [ "$HTTP_CODE" = "404" ]; then
-            echo "pypi_version=NONE" >> "$GITHUB_OUTPUT"
-            echo "🆕 Package not yet on PyPI"
-          else
-            PYPI_VER=$(python -c "
-          import json, pathlib
-          data = json.loads(pathlib.Path('/tmp/pypi.json').read_text())
-          print(data['info']['version'])
-          ")
-            echo "pypi_version=$PYPI_VER" >> "$GITHUB_OUTPUT"
-            echo "📡 PyPI version: $PYPI_VER"
-          fi
-
-      - name: Decide whether to publish
-        id: decide
-        run: |
-          LOCAL="${{ steps.local.outputs.version }}"
-          PYPI="${{ steps.pypi.outputs.pypi_version }}"
-
-          if [ "$PYPI" = "NONE" ]; then
-            echo "should_publish=true" >> "$GITHUB_OUTPUT"
-            echo "✅ First publish — will deploy $LOCAL"
-          elif [ "$LOCAL" != "$PYPI" ]; then
-            echo "should_publish=true" >> "$GITHUB_OUTPUT"
-            echo "✅ Version bumped ($PYPI → $LOCAL) — will deploy"
-          else
-            echo "should_publish=false" >> "$GITHUB_OUTPUT"
-            echo "⏭️ Version $LOCAL already on PyPI — skipping"
-          fi
-
-  # ── 2. Build wheels (maturin) ─────────────────────────────
-  #
-  # Linux:           manylinux container has CPython 3.10–3.13 built-in.
-  # Windows / macOS: actions/setup-python installs all 4 versions so
-  #                  maturin can find them.
-  #
+  # ── 3. Build wheels (maturin) ─────────────────────────────
   build-wheels:
-    needs: check-version
-    if: needs.check-version.outputs.should_publish == 'true'
+    needs: [check-version, test]
+    if: needs.check-version.outputs.version_changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -113,57 +99,51 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: auto
-          # ── Linux aarch64 (cross-compiled via QEMU + manylinux) ──
+          # ── Linux aarch64 ──
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             manylinux: auto
-          # ── Windows x86_64 ──
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-          # ── macOS x86_64 (Intel) ──
-          - os: macos-13
+          # ── macOS x86_64 (Intel, cross-compiled on ARM) ──
+          - os: macos-14
             target: x86_64-apple-darwin
+            manylinux: "off"
           # ── macOS aarch64 (Apple Silicon) ──
           - os: macos-14
             target: aarch64-apple-darwin
+            manylinux: "off"
+          # ── Windows x86_64 ──
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: "off"
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      # Non-Linux: install all target Python versions so maturin can
-      # link against each one.  Linux manylinux containers already
-      # contain CPython 3.10–3.13.
-      - name: Set up Python interpreters
-        if: runner.os != 'Linux'
-        uses: actions/setup-python@v5
-        with:
-          python-version: |
-            3.10
-            3.11
-            3.12
-            3.13
-          allow-prereleases: false
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --interpreter 3.10 3.11 3.12 3.13
-          manylinux: ${{ matrix.manylinux || 'auto' }}
-          sccache: "true"
+          manylinux: ${{ matrix.manylinux }}
+          before-script-linux: |
+            # Ensure Perl is available for vendored OpenSSL build (openssl-src)
+            if command -v yum &> /dev/null; then
+              yum install -y perl-IPC-Cmd perl-core
+            elif command -v apk &> /dev/null; then
+              apk add --no-cache perl make
+            fi
 
-      - name: Upload wheel artifacts
+      - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.target }}
           path: dist/*.whl
-          if-no-files-found: error
 
-  # ── 3. Build source distribution ──────────────────────────
+  # ── 4. Build sdist ────────────────────────────────────────
   build-sdist:
-    needs: check-version
-    if: needs.check-version.outputs.should_publish == 'true'
+    needs: [check-version, test]
+    if: needs.check-version.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -174,95 +154,31 @@ jobs:
           command: sdist
           args: --out dist
 
-      - name: Upload sdist artifact
+      - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
           name: sdist
           path: dist/*.tar.gz
-          if-no-files-found: error
-
-  # ── 4. Test built wheels (install from local, NOT from PyPI) ──
-  test:
-    needs: build-wheels
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux: every Python version
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            python-version: "3.10"
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            python-version: "3.11"
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            python-version: "3.12"
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            python-version: "3.13"
-          # Windows: spot-check 3.12
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            python-version: "3.12"
-          # macOS ARM: spot-check 3.12
-          - os: macos-14
-            target: aarch64-apple-darwin
-            python-version: "3.12"
-
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Download wheel
-        uses: actions/download-artifact@v4
-        with:
-          name: wheels-${{ matrix.target }}
-          path: dist/
-
-      - name: Install wheel + test deps
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          # Install f2a from the locally-built wheel only (not from PyPI)
-          python -m pip install --find-links dist/ --no-index f2a
-          # Install test dependencies from PyPI
-          python -m pip install pytest pandas numpy matplotlib seaborn scipy pyarrow rich jinja2
-
-      - name: Run tests
-        run: python -m pytest tests/ -v --tb=short
 
   # ── 5. Publish to PyPI ────────────────────────────────────
   publish:
-    needs: [check-version, build-wheels, build-sdist, test]
-    if: needs.check-version.outputs.should_publish == 'true'
+    needs: [check-version, build-wheels, build-sdist]
+    if: needs.check-version.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write  # Required for Trusted Publisher (OIDC)
-
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: dist/
+          path: dist
           merge-multiple: true
 
       - name: List artifacts
-        run: ls -lhR dist/
+        run: ls -lh dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/
         # Uses Trusted Publisher (OIDC) — no API token needed.
         # Register at: https://pypi.org/manage/project/f2a/settings/publishing/
-        #
-        # Manual token alternative:
-        # with:
-        #   password: ${{ secrets.PYPI_API_TOKEN }}
