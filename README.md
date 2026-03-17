@@ -5,7 +5,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/f2a?color=blue)](https://pypi.org/project/f2a/)
 [![Python](https://img.shields.io/pypi/pyversions/f2a)](https://pypi.org/project/f2a/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-88%20passed-brightgreen)]()
 
 <p align="center">
@@ -457,4 +457,4 @@ ruff check f2a/
 
 ## License
 
-MIT License — See [LICENSE](LICENSE) for details.
+Apache License 2.0 — See [LICENSE](LICENSE) for details.
