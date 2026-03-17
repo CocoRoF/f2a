@@ -59,6 +59,63 @@ report.to_dict()                 # Everything as a dictionary
 
 ---
 
+## Example: Analyzing a HuggingFace Dataset
+
+```python
+import f2a
+
+report = f2a.analyze("https://huggingface.co/datasets/lerobot/roboturk")
+```
+
+```
+shape: (187507, 11) | subsets: 1
+  default/train: (187507, 11)
+```
+
+```python
+report.show()
+```
+
+```
+╔══════════════════════════════════════════════════════════╗
+║  f2a Analysis Report — lerobot/roboturk                 ║
+╠══════════════════════════════════════════════════════════╣
+║  Rows: 187,507  ·  Columns: 11                         ║
+║  Numeric: 9  ·  Categorical: 0  ·  Text: 0             ║
+║  Datetime: 0  ·  Boolean: 0                             ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+```python
+# Save interactive HTML report (2.5 MB self-contained file)
+path = report.to_html("output/")
+print(path)
+# → output/lerobot_roboturk_20260317_090024_report.html
+```
+
+> 📊 **[View this report live](https://cocoRoF.github.io/f2a/lerobot_roboturk_20260317_090024_report.html)**
+
+```python
+# Access statistics programmatically
+report.stats.summary
+#          timestamp   episode_index  frame_index  ...
+# count   187507.00      187507.00    187507.00   ...
+# mean         ...           ...          ...     ...
+# std          ...           ...          ...     ...
+
+report.stats.correlation_matrix
+#                   timestamp  episode_index  frame_index  ...
+# timestamp          1.000000      0.978193     0.054412  ...
+# episode_index      0.978193      1.000000    -0.003887  ...
+
+# Advanced analysis results
+report.stats.advanced_stats.keys()
+# dict_keys(['advanced_distribution', 'advanced_correlation', 'clustering',
+#            'dimreduction', 'feature_insights', 'advanced_anomaly', ...])
+```
+
+---
+
 ## Multi-Subset HuggingFace Datasets
 
 Datasets with multiple configs and splits are **automatically discovered and analyzed**.
