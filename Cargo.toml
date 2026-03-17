@@ -1,6 +1,6 @@
 [package]
 name = "f2a"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 description = "f2a computation core -- Rust engine with PyO3 bindings"
 license = "Apache-2.0"
@@ -58,6 +58,11 @@ indexmap = { version = "2", features = ["serde"] }
 
 [profile.release]
 opt-level = 3
+
+# Faster dev/test builds (used by `pip install .` which defaults to debug)
+[profile.dev]
+opt-level = 1          # enough optimisation to keep tests realistic
+debug = false          # skip DWARF → faster link
 lto = "fat"
 codegen-units = 1
 strip = true
