@@ -36,7 +36,10 @@ test/
 # Output
 examples/output/
 examples/sample_data.csv
-*.html
+output/*.html
+
+# Allow sample reports
+!sample/
 
 # mypy
 .mypy_cache/
