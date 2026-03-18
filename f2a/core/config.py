@@ -108,6 +108,13 @@ class AnalysisConfig:
     ml_readiness: bool = True
     """Multi-dimensional ML-readiness scoring."""
 
+    # ── Enhancement modules (v1.1.1) ─────────────────────
+    enhanced_visualizations: bool = True
+    """Radar, parallel coordinates, ridgeline, hexbin, swarm, clustermap, etc."""
+
+    temporal_analysis: bool = True
+    """Autocorrelation, rolling statistics, trend detection, lag analysis."""
+
     # ── Advanced sub-options ──────────────────────────────
     max_cluster_k: int = 10
     """Maximum k for K-Means elbow search."""

@@ -21,6 +21,10 @@ from f2a.viz.cross_plots import CrossPlotter
 from f2a.viz.dimreduction_plots import DimReductionPlotter
 from f2a.viz.insight_plots import InsightPlotter
 
+# v1.1.1 viz modules
+from f2a.viz.enhanced_plots import EnhancedPlotter
+from f2a.viz.temporal_plots import TemporalPlotter
+
 __all__ = [
     "BasicPlotter",
     "CategoricalPlotter",
@@ -40,4 +44,7 @@ __all__ = [
     "CrossPlotter",
     "DimReductionPlotter",
     "InsightPlotter",
+    # v1.1.1
+    "EnhancedPlotter",
+    "TemporalPlotter",
 ]

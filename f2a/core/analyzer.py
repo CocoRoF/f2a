@@ -560,6 +560,207 @@ class VizResult:
         self._figures["biplot"] = fig
         return fig
 
+    # -- Enhanced plots (v1.1.1) ------------------------------------------
+
+    def plot_radar_chart(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        qs = self._stats.quality_scores
+        if not qs:
+            return None  # type: ignore[return-value]
+        scores = {k: v for k, v in qs.items() if isinstance(v, (int, float)) and k != "overall"}
+        if len(scores) < 3:
+            return None  # type: ignore[return-value]
+        fig = p.radar_chart(scores, title="Data Quality Radar")
+        self._figures["radar_chart"] = fig
+        return fig
+
+    def plot_parallel_coordinates(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns[:12]
+        if len(num_cols) < 2:
+            return None  # type: ignore[return-value]
+        cat_col = self._schema.categorical_columns[0] if self._schema.categorical_columns else None
+        fig = p.parallel_coordinates(
+            self._df, num_cols, color_col=cat_col,
+            max_sample=min(500, self._config.max_sample_for_advanced),
+        )
+        self._figures["parallel_coordinates"] = fig
+        return fig
+
+    def plot_ridgeline(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns[:self._config.max_plot_columns]
+        if len(num_cols) < 1:
+            return None  # type: ignore[return-value]
+        fig = p.ridgeline_plot(self._df, num_cols)
+        self._figures["ridgeline"] = fig
+        return fig
+
+    def plot_hexbin(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns
+        if len(num_cols) < 2:
+            return None  # type: ignore[return-value]
+        # Find the most correlated pair
+        x_col, y_col = num_cols[0], num_cols[1]
+        if not self._stats.correlation_matrix.empty:
+            corr = self._stats.correlation_matrix.copy()
+            for c in corr.columns:
+                corr.loc[c, c] = 0
+            max_pair = corr.abs().stack().idxmax()
+            x_col, y_col = max_pair[0], max_pair[1]
+        fig = p.hexbin_density(self._df, x_col, y_col)
+        self._figures["hexbin"] = fig
+        return fig
+
+    def plot_swarm(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns[:8]
+        if not num_cols:
+            return None  # type: ignore[return-value]
+        fig = p.swarm_plot(self._df, num_cols, max_sample=300)
+        self._figures["swarm"] = fig
+        return fig
+
+    def plot_clustermap(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        if self._stats.correlation_matrix.empty or self._stats.correlation_matrix.shape[0] < 3:
+            return None  # type: ignore[return-value]
+        fig = p.clustermap(self._stats.correlation_matrix)
+        self._figures["clustermap"] = fig
+        return fig
+
+    def plot_pair_scatter_matrix(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns[:5]
+        if len(num_cols) < 2:
+            return None  # type: ignore[return-value]
+        fig = p.pair_scatter_matrix(self._df, num_cols, max_sample=500)
+        self._figures["pair_scatter_matrix"] = fig
+        return fig
+
+    def plot_lollipop(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        if self._stats.feature_importance.empty:
+            return None  # type: ignore[return-value]
+        fig = p.lollipop_chart(self._stats.feature_importance)
+        self._figures["lollipop"] = fig
+        return fig
+
+    def plot_stats_dashboard(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns[:6]
+        if not num_cols:
+            return None  # type: ignore[return-value]
+        fig = p.stats_dashboard(self._df, num_cols)
+        self._figures["stats_dashboard"] = fig
+        return fig
+
+    def plot_top_correlations_bar(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        if self._stats.correlation_matrix.empty:
+            return None  # type: ignore[return-value]
+        fig = p.top_correlations_bar(self._stats.correlation_matrix)
+        self._figures["top_correlations_bar"] = fig
+        return fig
+
+    def plot_completeness_heatmap(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        fig = p.completeness_heatmap(self._df)
+        self._figures["completeness_heatmap"] = fig
+        return fig
+
+    def plot_outlier_gauge(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        if self._stats.outlier_summary.empty:
+            return None  # type: ignore[return-value]
+        fig = p.outlier_gauge(self._stats.outlier_summary)
+        self._figures["outlier_gauge"] = fig
+        return fig
+
+    def plot_distribution_comparison(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns
+        cat_cols = self._schema.categorical_columns
+        if not num_cols or not cat_cols:
+            return None  # type: ignore[return-value]
+        fig = p.distribution_comparison(self._df, num_cols[0], cat_cols[0])
+        self._figures["distribution_comparison"] = fig
+        return fig
+
+    def plot_scatter_with_marginals(self) -> plt.Figure:
+        from f2a.viz.enhanced_plots import EnhancedPlotter
+        p = EnhancedPlotter()
+        num_cols = self._schema.numeric_columns
+        if len(num_cols) < 2:
+            return None  # type: ignore[return-value]
+        # Find most correlated pair
+        x_col, y_col = num_cols[0], num_cols[1]
+        if not self._stats.correlation_matrix.empty:
+            corr = self._stats.correlation_matrix.copy()
+            for c in corr.columns:
+                corr.loc[c, c] = 0
+            max_pair = corr.abs().stack().idxmax()
+            x_col, y_col = max_pair[0], max_pair[1]
+        fig = p.scatter_with_marginals(self._df, x_col, y_col)
+        self._figures["scatter_marginals"] = fig
+        return fig
+
+    # -- Temporal plots (v1.1.1) ------------------------------------------
+
+    def plot_autocorrelation(self) -> plt.Figure:
+        from f2a.viz.temporal_plots import TemporalPlotter
+        p = TemporalPlotter()
+        acf = self._stats.advanced_stats.get("temporal", {}).get("autocorrelation", {})
+        if not acf:
+            return None  # type: ignore[return-value]
+        fig = p.autocorrelation_plot(acf)
+        self._figures["autocorrelation"] = fig
+        return fig
+
+    def plot_rolling_stats(self) -> plt.Figure:
+        from f2a.viz.temporal_plots import TemporalPlotter
+        p = TemporalPlotter()
+        rolling = self._stats.advanced_stats.get("temporal", {}).get("rolling_stats", {})
+        if not rolling:
+            return None  # type: ignore[return-value]
+        fig = p.rolling_stats_plot(self._df, rolling)
+        self._figures["rolling_stats"] = fig
+        return fig
+
+    def plot_trend(self) -> plt.Figure:
+        from f2a.viz.temporal_plots import TemporalPlotter
+        p = TemporalPlotter()
+        trend = self._stats.advanced_stats.get("temporal", {}).get("trend_detection", {})
+        if not trend:
+            return None  # type: ignore[return-value]
+        fig = p.trend_plot(self._df, trend)
+        self._figures["trend"] = fig
+        return fig
+
+    def plot_lag_scatter(self) -> plt.Figure:
+        from f2a.viz.temporal_plots import TemporalPlotter
+        p = TemporalPlotter()
+        num_cols = self._schema.numeric_columns[:6]
+        if not num_cols:
+            return None  # type: ignore[return-value]
+        fig = p.lag_scatter(self._df, num_cols, lag=1)
+        self._figures["lag_scatter"] = fig
+        return fig
+
 
 # =====================================================================
 #  Subset / Analysis Report
@@ -987,8 +1188,111 @@ class AnalysisReport:
                     viz.plot_feature_contribution,
                     config.pca and not stats.pca_loadings.empty,
                 ),
+                # v1.1.1: Temporal Analysis plots
+                (
+                    "Autocorrelation (ACF)",
+                    viz.plot_autocorrelation,
+                    config.temporal_analysis
+                    and bool(adv.get("temporal", {}).get("autocorrelation")),
+                ),
+                (
+                    "Rolling Statistics",
+                    viz.plot_rolling_stats,
+                    config.temporal_analysis
+                    and bool(adv.get("temporal", {}).get("rolling_stats")),
+                ),
+                (
+                    "Trend Detection",
+                    viz.plot_trend,
+                    config.temporal_analysis
+                    and bool(adv.get("temporal", {}).get("trend_detection")),
+                ),
+                (
+                    "Lag Scatter Plots",
+                    viz.plot_lag_scatter,
+                    config.temporal_analysis
+                    and len(viz._schema.numeric_columns) >= 1,
+                ),
             ]
             plot_attempts.extend(adv_attempts)
+
+        # -- Enhanced visualization plots (v1.1.1) ------------------------
+        if config.enhanced_visualizations:
+            enhanced_attempts: list[tuple[str, Any, bool]] = [
+                (
+                    "Data Quality Radar",
+                    viz.plot_radar_chart,
+                    config.quality_score and bool(stats.quality_scores),
+                ),
+                (
+                    "Parallel Coordinates",
+                    viz.plot_parallel_coordinates,
+                    len(viz._schema.numeric_columns) >= 2,
+                ),
+                (
+                    "Ridgeline Distribution",
+                    viz.plot_ridgeline,
+                    len(viz._schema.numeric_columns) >= 1,
+                ),
+                (
+                    "Hexbin Density",
+                    viz.plot_hexbin,
+                    len(viz._schema.numeric_columns) >= 2,
+                ),
+                (
+                    "Swarm Plot",
+                    viz.plot_swarm,
+                    len(viz._schema.numeric_columns) >= 1,
+                ),
+                (
+                    "Clustered Correlation Map",
+                    viz.plot_clustermap,
+                    config.correlation and not stats.correlation_matrix.empty
+                    and stats.correlation_matrix.shape[0] >= 3,
+                ),
+                (
+                    "Pair Scatter Matrix",
+                    viz.plot_pair_scatter_matrix,
+                    len(viz._schema.numeric_columns) >= 2,
+                ),
+                (
+                    "Feature Importance Lollipop",
+                    viz.plot_lollipop,
+                    config.feature_importance and not stats.feature_importance.empty,
+                ),
+                (
+                    "Statistics Dashboard",
+                    viz.plot_stats_dashboard,
+                    config.descriptive and len(viz._schema.numeric_columns) >= 1,
+                ),
+                (
+                    "Top Correlated Pairs",
+                    viz.plot_top_correlations_bar,
+                    config.correlation and not stats.correlation_matrix.empty,
+                ),
+                (
+                    "Data Completeness Overview",
+                    viz.plot_completeness_heatmap,
+                    True,
+                ),
+                (
+                    "Outlier Proportion Gauge",
+                    viz.plot_outlier_gauge,
+                    config.outlier and not stats.outlier_summary.empty,
+                ),
+                (
+                    "Distribution by Group",
+                    viz.plot_distribution_comparison,
+                    len(viz._schema.numeric_columns) >= 1
+                    and len(viz._schema.categorical_columns) >= 1,
+                ),
+                (
+                    "Scatter with Marginals",
+                    viz.plot_scatter_with_marginals,
+                    len(viz._schema.numeric_columns) >= 2,
+                ),
+            ]
+            plot_attempts.extend(enhanced_attempts)
 
         for name, fn, condition in plot_attempts:
             if not condition:
@@ -1573,6 +1877,15 @@ class Analyzer:
                 }
             except Exception as exc:
                 logger.debug("ML readiness evaluation failed: %s", exc)
+
+        # A13. Temporal Analysis (v1.1.1)
+        if config.temporal_analysis:
+            try:
+                from f2a.stats.temporal_stats import TemporalStats
+                ts = TemporalStats(df, schema)
+                adv["temporal"] = ts.summary()
+            except Exception as exc:
+                logger.debug("Temporal analysis failed: %s", exc)
 
 
 # =====================================================================

@@ -1717,6 +1717,120 @@ def _section_cross_analysis(stats: Any, figures: dict[str, plt.Figure]) -> str:
     return body
 
 
+def _section_temporal(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    """Build Temporal & Sequential Analysis sub-tab content."""
+    temporal = stats.advanced_stats.get("temporal", {})
+    if not temporal:
+        return ""
+
+    body = ""
+
+    # Autocorrelation summary
+    acf = temporal.get("autocorrelation", {})
+    if acf:
+        body += '<h3 class="section-subtitle" data-i18n="sub_autocorrelation">Autocorrelation Analysis</h3>'
+        body += f'<p style="font-size:0.88em;color:#666;">Computed for {len(acf)} columns</p>'
+
+    # Trend detection table
+    trend = temporal.get("trend_detection", {})
+    if trend:
+        body += '<h3 class="section-subtitle" data-i18n="sub_trend_detection">Trend Detection</h3>'
+        rows: list[dict[str, Any]] = []
+        for col, info in trend.items():
+            rows.append({
+                "column": col,
+                "slope": info.get("slope", 0),
+                "normalized_slope": info.get("normalized_slope", 0),
+                "trend": info.get("trend", "stable"),
+            })
+        if rows:
+            trend_df = pd.DataFrame(rows).set_index("column")
+            body += _wrap_table(_df_to_html(trend_df))
+
+    # Rolling stats stability
+    rolling = temporal.get("rolling_stats", {})
+    if rolling:
+        body += '<h3 class="section-subtitle" data-i18n="sub_rolling_stats">Rolling Statistics Stability</h3>'
+        stab_rows: list[dict[str, Any]] = []
+        for col, info in rolling.items():
+            stab_rows.append({
+                "column": col,
+                "window": info.get("window", 0),
+                "mean_stability": info.get("mean_stability", 0),
+                "std_stability": info.get("std_stability", 0),
+            })
+        if stab_rows:
+            stab_df = pd.DataFrame(stab_rows).set_index("column")
+            body += _wrap_table(_df_to_html(stab_df))
+
+    # Charts
+    chart_keys = [
+        "Autocorrelation (ACF)", "Rolling Statistics",
+        "Trend Detection", "Lag Scatter Plots",
+    ]
+    chart_parts = {k: figures[k] for k in chart_keys if k in figures}
+    if chart_parts:
+        body += _figures_to_html(chart_parts, grid=True)
+
+    return body
+
+
+def _section_enhanced_viz(stats: Any, figures: dict[str, plt.Figure]) -> str:
+    """Build Enhanced Visualizations sub-tab content."""
+    body = ""
+
+    # Group 1: Data Overview
+    overview_keys = [
+        "Data Completeness Overview", "Statistics Dashboard",
+        "Data Quality Radar",
+    ]
+    overview_parts = {k: figures[k] for k in overview_keys if k in figures}
+    if overview_parts:
+        body += '<h3 class="section-subtitle" data-i18n="sub_enhanced_overview">Data Overview</h3>'
+        body += _figures_to_html(overview_parts, grid=True)
+
+    # Group 2: Distribution
+    dist_keys = [
+        "Ridgeline Distribution", "Swarm Plot",
+        "Distribution by Group",
+    ]
+    dist_parts = {k: figures[k] for k in dist_keys if k in figures}
+    if dist_parts:
+        body += '<h3 class="section-subtitle" data-i18n="sub_enhanced_distribution">Distribution Visualizations</h3>'
+        body += _figures_to_html(dist_parts, grid=True)
+
+    # Group 3: Correlation & Relationships
+    corr_keys = [
+        "Clustered Correlation Map", "Top Correlated Pairs",
+        "Scatter with Marginals", "Hexbin Density",
+        "Pair Scatter Matrix",
+    ]
+    corr_parts = {k: figures[k] for k in corr_keys if k in figures}
+    if corr_parts:
+        body += '<h3 class="section-subtitle" data-i18n="sub_enhanced_correlation">Correlation & Relationships</h3>'
+        body += _figures_to_html(corr_parts, grid=True)
+
+    # Group 4: Multi-dimensional
+    multi_keys = [
+        "Parallel Coordinates", "Feature Importance Lollipop",
+    ]
+    multi_parts = {k: figures[k] for k in multi_keys if k in figures}
+    if multi_parts:
+        body += '<h3 class="section-subtitle" data-i18n="sub_enhanced_multidim">Multi-Dimensional Analysis</h3>'
+        body += _figures_to_html(multi_parts, grid=True)
+
+    # Group 5: Outlier
+    outlier_keys = [
+        "Outlier Proportion Gauge",
+    ]
+    outlier_parts = {k: figures[k] for k in outlier_keys if k in figures}
+    if outlier_parts:
+        body += '<h3 class="section-subtitle" data-i18n="sub_enhanced_outlier">Outlier Visualizations</h3>'
+        body += _figures_to_html(outlier_parts, grid=True)
+
+    return body
+
+
 # =====================================================================
 #  Navigation links
 # =====================================================================
@@ -1801,6 +1915,12 @@ def _build_sub_tabs(
         ("data-profile", "Data Profile", "Data Profiling Summary",
          "tab_data_profile", "adv_data_profile",
          lambda: _section_data_profiling(stats, figures)),
+        ("temporal", "Temporal", "Temporal & Sequential Analysis",
+         "tab_temporal", "adv_temporal",
+         lambda: _section_temporal(stats, figures)),
+        ("enhanced-viz", "Enhanced Viz", "Enhanced Visualizations",
+         "tab_enhanced_viz", "adv_enhanced_viz",
+         lambda: _section_enhanced_viz(stats, figures)),
     ]
 
     group_id = f"stg-{prefix}"

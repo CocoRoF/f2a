@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "f2a"
-version = "1.1.0"
+version = "1.1.1"
 description = "File to Analysis — Automatically perform descriptive statistical analysis and visualization from any data source"
 readme = "README.md"
 license = { text = "MIT" }
