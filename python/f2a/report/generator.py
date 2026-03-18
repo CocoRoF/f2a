@@ -9,7 +9,7 @@ Generates comprehensive single-page HTML reports with:
 - Metric tooltips (100+ definitions)
 - Language selector (6 languages)
 - Quality gauge bars
-- Inline base64 charts
+- Inline base64 charts (32 chart types)
 """
 
 from __future__ import annotations
@@ -18,8 +18,11 @@ import base64
 import html as html_mod
 import io
 import json
+import logging
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from f2a.report.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, t
 
@@ -30,6 +33,14 @@ try:
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False
+
+try:
+    import pandas as pd
+    HAS_PD = True
+except ImportError:
+    HAS_PD = False
+
+logger = logging.getLogger("f2a.report")
 
 
 # =====================================================================
@@ -571,7 +582,55 @@ if(sel){{sel.addEventListener('change',function(){{f2aSetLang(this.value);}});}}
 
 
 # =====================================================================
-#  Section builders — work with JSON dicts from Rust
+#  Chart helper
+# =====================================================================
+
+def _chart_img(plot_func, *args, title: str = "", **kwargs) -> str:
+    """Call a plot function, convert to base64 <img>. Returns empty on error."""
+    if not HAS_MPL:
+        return ""
+    try:
+        fig = plot_func(*args, **kwargs)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=110, bbox_inches="tight",
+                    facecolor="#ffffff", edgecolor="none")
+        plt.close(fig)
+        buf.seek(0)
+        b64 = base64.b64encode(buf.read()).decode("utf-8")
+        alt = _esc(title) if title else "chart"
+        return (f'<div class="chart-full">'
+                f'<img src="data:image/png;base64,{b64}" alt="{alt}"></div>')
+    except Exception as exc:
+        logger.debug("Chart generation failed for %s: %s", title, exc)
+        plt.close("all")
+        return ""
+
+
+def _chart_card(plot_func, *args, title: str = "", **kwargs) -> str:
+    """Chart inside a styled card."""
+    img = _chart_img(plot_func, *args, title=title, **kwargs)
+    if not img:
+        return ""
+    return (f'<div class="chart-card"><h4>{_esc(title)}</h4>'
+            f'{img}</div>')
+
+
+def _extract_numeric(df, max_cols: int = 20) -> dict[str, list[float]]:
+    """Extract numeric column data from a pandas DataFrame."""
+    if df is None or not HAS_PD:
+        return {}
+    numeric = df.select_dtypes(include=["number"])
+    cols = list(numeric.columns)[:max_cols]
+    result: dict[str, list[float]] = {}
+    for col in cols:
+        vals = numeric[col].dropna().tolist()
+        if vals:
+            result[col] = vals
+    return result
+
+
+# =====================================================================
+#  Section builders — work with JSON dicts from Rust + optional DataFrame
 # =====================================================================
 
 def _section_overview(schema: dict, duration: float | None) -> str:
@@ -636,6 +695,8 @@ def _section_preprocessing(pp: dict) -> str:
     return f'<ul class="log-list">{li}</ul>'
 
 
+# ── Fallback renderer ────────────────────────────────────────────
+
 def _section_generic(_key: str, data: Any) -> str:
     """Render any analysis section from JSON data."""
     if isinstance(data, dict):
@@ -665,11 +726,20 @@ def _section_generic(_key: str, data: Any) -> str:
     return f'<details><summary>Raw data</summary><pre class="json-pre">{_esc(json_str)}</pre></details>'
 
 
-def _section_quality(data: dict) -> str:
-    return _quality_bars(data) + _section_generic("quality", data)
+# ── Dedicated section renderers (with charts) ────────────────────
+
+def _section_quality(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_quality_radar
+    parts: list[str] = [_quality_bars(data)]
+    dims = data.get("dimensions", [])
+    if dims:
+        parts.append(_chart_img(plot_quality_radar, dims, title="Data Quality"))
+    parts.append(_section_generic("quality", data))
+    return "\n".join(parts)
 
 
-def _section_descriptive(data: dict) -> str:
+def _section_descriptive(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_distribution_grid, plot_boxplots, plot_violin
     parts: list[str] = []
     numeric = data.get("numeric", [])
     categorical = data.get("categorical", [])
@@ -679,25 +749,211 @@ def _section_descriptive(data: dict) -> str:
     if categorical:
         parts.append('<h3 class="section-subtitle">Categorical Columns</h3>')
         parts.append(_json_table(categorical))
+    # Charts from raw DataFrame values
+    col_data = _extract_numeric(df)
+    if col_data:
+        parts.append('<div class="charts-grid">')
+        parts.append(_chart_card(plot_distribution_grid, col_data, title="Distribution Histograms"))
+        parts.append(_chart_card(plot_boxplots, col_data, title="Boxplots"))
+        parts.append(_chart_card(plot_violin, col_data, title="Violin Plots"))
+        parts.append('</div>')
     return "\n".join(parts) if parts else _section_generic("descriptive", data)
 
 
-def _section_missing(data: dict) -> str:
+def _section_distribution(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_distribution_grid, plot_boxplots, plot_violin, plot_qq
+    parts: list[str] = []
+    # Summary cards
+    scalars = {k: v for k, v in data.items() if not isinstance(v, (dict, list))}
+    if scalars:
+        parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+    # Table for column stats
+    columns = data.get("columns", [])
+    if columns:
+        parts.append(_json_table(columns))
+    # Charts
+    col_data = _extract_numeric(df)
+    if col_data:
+        parts.append('<h3 class="section-subtitle">Distribution Charts</h3>')
+        parts.append(_chart_img(plot_distribution_grid, col_data, title="Distribution Histograms"))
+        parts.append('<div class="charts-grid">')
+        parts.append(_chart_card(plot_boxplots, col_data, title="Boxplots"))
+        parts.append(_chart_card(plot_violin, col_data, title="Violin Plots"))
+        parts.append('</div>')
+        try:
+            parts.append(_chart_img(plot_qq, col_data, title="Q-Q Plots"))
+        except ImportError:
+            pass
+    return "\n".join(parts) if parts else _section_generic("distribution", data)
+
+
+def _section_correlation(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_correlation_heatmap
+    parts: list[str] = []
+    cols = data.get("columns", [])
+    pearson = data.get("pearson", [])
+    spearman = data.get("spearman", [])
+    if pearson and cols:
+        parts.append(_chart_img(plot_correlation_heatmap, pearson, cols,
+                                title="Pearson Correlation"))
+    if spearman and cols:
+        parts.append(_chart_img(plot_correlation_heatmap, spearman, cols,
+                                title="Spearman Correlation"))
+    # High correlation pairs table
+    pairs = data.get("high_correlation_pairs", [])
+    if pairs:
+        parts.append('<h3 class="section-subtitle">High Correlation Pairs</h3>')
+        parts.append(_json_table(pairs))
+    # VIF
+    vif = data.get("vif", [])
+    if vif:
+        parts.append('<h3 class="section-subtitle">VIF</h3>')
+        parts.append(_json_table(vif))
+    # Cramér's V
+    cramers = data.get("cramers_v", {})
+    if isinstance(cramers, dict) and cramers:
+        parts.append('<h3 class="section-subtitle">Cramér\'s V</h3>')
+        parts.append(_section_generic("cramers_v", cramers))
+    if not parts:
+        parts.append(_section_generic("correlation", data))
+    return "\n".join(parts)
+
+
+def _section_missing(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_missing_bar, plot_missing_matrix
     per_col = data.get("per_column", [])
     if not per_col:
         return "<p>No missing values detected.</p>"
     missing = [c for c in per_col if c.get("n_missing", 0) > 0]
     if not missing:
         return "<p>No missing values detected.</p>"
-    return _json_table(missing)
+    parts: list[str] = [_json_table(missing)]
+    # Missing bar chart
+    parts.append(_chart_img(plot_missing_bar, per_col, title="Missing Data"))
+    # Missing matrix
+    matrix = data.get("missing_matrix", [])
+    col_names = data.get("columns", [c.get("column", "") for c in per_col])
+    if matrix:
+        parts.append(_chart_img(plot_missing_matrix, matrix, col_names,
+                                title="Missing Data Matrix"))
+    return "\n".join(parts)
 
 
-def _section_insights(data: dict) -> str:
+def _section_outlier(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_outlier_summary
+    parts: list[str] = []
+    # Cards / table
+    scalars = {k: v for k, v in data.items() if not isinstance(v, (dict, list))}
+    if scalars:
+        parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+    iqr_data = data.get("iqr", [])
+    if iqr_data:
+        parts.append('<h3 class="section-subtitle">IQR Method</h3>')
+        parts.append(_json_table(iqr_data))
+    zscore_data = data.get("zscore", [])
+    if zscore_data:
+        parts.append('<h3 class="section-subtitle">Z-Score Method</h3>')
+        parts.append(_json_table(zscore_data))
+    # Chart with raw data
+    col_data = _extract_numeric(df)
+    if col_data:
+        # Build outlier masks from IQR results
+        masks: dict[str, list[bool]] = {}
+        for item in iqr_data:
+            col = item.get("column", "")
+            lb = item.get("lower_bound", float("-inf"))
+            ub = item.get("upper_bound", float("inf"))
+            if col in col_data:
+                masks[col] = [v < lb or v > ub for v in col_data[col]]
+        parts.append(_chart_img(plot_outlier_summary, col_data, masks,
+                                title="Outlier Detection"))
+    if not parts:
+        parts.append(_section_generic("outlier", data))
+    return "\n".join(parts)
+
+
+def _section_categorical(data: dict, df=None) -> str:
+    parts: list[str] = []
+    if isinstance(data, list):
+        parts.append(_json_table(data))
+    elif isinstance(data, dict):
+        for key, val in data.items():
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                parts.append(f'<h3 class="section-subtitle">{_esc(key.replace("_"," ").title())}</h3>')
+                parts.append(_json_table(val))
+            elif isinstance(val, dict):
+                scalars = {k: v for k, v in val.items() if not isinstance(v, (dict, list))}
+                if scalars:
+                    parts.append(f'<h3 class="section-subtitle">{_esc(key.replace("_"," ").title())}</h3>')
+                    parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+    return "\n".join(parts) if parts else _section_generic("categorical", data)
+
+
+def _section_feature_importance(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_feature_importance
+    parts: list[str] = []
+    mean_abs = data.get("mean_abs_correlation", [])
+    variance = data.get("variance_ranking", [])
+    if mean_abs or variance:
+        parts.append(_chart_img(plot_feature_importance, mean_abs, variance,
+                                title="Feature Importance"))
+    if mean_abs:
+        parts.append('<h3 class="section-subtitle">Mean Absolute Correlation</h3>')
+        parts.append(_json_table(mean_abs))
+    if variance:
+        parts.append('<h3 class="section-subtitle">Variance Ranking</h3>')
+        parts.append(_json_table(variance))
+    if not parts:
+        parts.append(_section_generic("feature_importance", data))
+    return "\n".join(parts)
+
+
+def _section_pca(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_pca_scree, plot_pca_loadings
+    parts: list[str] = []
+    components = data.get("components", [])
+    loadings = data.get("loadings", [])
+    feature_names = data.get("feature_names", [])
+    if components:
+        var_ratio = [c.get("variance_ratio", 0) for c in components]
+        cum_ratio = [c.get("cumulative_ratio", 0) for c in components]
+        parts.append(_chart_img(plot_pca_scree, var_ratio, cum_ratio,
+                                title="PCA — Scree Plot"))
+        parts.append(_json_table(components))
+    if loadings and feature_names:
+        parts.append(_chart_img(plot_pca_loadings, loadings, feature_names,
+                                title="PCA Loadings"))
+    if not parts:
+        parts.append(_section_generic("pca", data))
+    return "\n".join(parts)
+
+
+def _section_duplicates(data: dict, df=None) -> str:
+    parts: list[str] = []
+    scalars = {k: v for k, v in data.items() if not isinstance(v, (dict, list))}
+    if scalars:
+        parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+    per_col = data.get("per_column_uniqueness", [])
+    if per_col:
+        parts.append('<h3 class="section-subtitle">Per-Column Uniqueness</h3>')
+        parts.append(_json_table(per_col))
+    return "\n".join(parts) if parts else _section_generic("duplicates", data)
+
+
+def _section_insights(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_insight_severity, plot_top_insights
     summary = data.get("summary", {})
     insights = data.get("insights", [])
     parts: list[str] = []
     if summary:
         parts.append('<div class="cards">' + _dict_to_cards(summary) + "</div>")
+        parts.append('<div class="charts-grid">')
+        parts.append(_chart_card(plot_insight_severity, summary,
+                                 title="Insight Severity Distribution"))
+        if insights:
+            parts.append(_chart_card(plot_top_insights, insights,
+                                     title="Top Insights"))
+        parts.append('</div>')
     for ins in insights[:30]:
         sev = ins.get("severity", "info")
         color = {"critical": "#e74c3c", "warning": "#f39c12", "info": "#3498db"}.get(sev.lower(), "#95a5a6")
@@ -716,7 +972,7 @@ def _section_insights(data: dict) -> str:
     return "\n".join(parts)
 
 
-def _section_ml_readiness(data: dict) -> str:
+def _section_ml_readiness(data: dict, df=None) -> str:
     grade = data.get("grade", "?")
     score = data.get("overall_score", 0)
     color = {"A": "#27ae60", "B": "#84cc16", "C": "#f39c12", "D": "#f97316", "F": "#e74c3c"}.get(grade, "#888")
@@ -733,6 +989,247 @@ def _section_ml_readiness(data: dict) -> str:
         li = "".join(f"<li>{_esc(r)}</li>" for r in recs)
         parts.append(f'<h3 class="section-subtitle">Recommendations</h3><ul>{li}</ul>')
     return "\n".join(parts)
+
+
+# ── Advanced section renderers ────────────────────────────────────
+
+def _section_advanced_distribution(data: dict, df=None) -> str:
+    from f2a.viz.plots import (plot_best_fit_overlay, plot_ecdf,
+                                plot_power_transform, plot_jarque_bera)
+    parts: list[str] = []
+    col_data = _extract_numeric(df)
+    # Best-fit
+    best_fit = data.get("best_fit", [])
+    if best_fit:
+        parts.append('<h3 class="section-subtitle">Best-Fit Distribution</h3>')
+        parts.append(_json_table(best_fit))
+        if col_data:
+            try:
+                parts.append(_chart_img(plot_best_fit_overlay, col_data, best_fit,
+                                        title="Best-Fit Distribution Overlay"))
+            except Exception:
+                pass
+    # ECDF
+    if col_data:
+        parts.append(_chart_img(plot_ecdf, col_data, title="ECDF Plot"))
+    # Power transforms
+    power_transforms = data.get("power_transforms", data.get("power_transform", []))
+    if power_transforms:
+        parts.append('<h3 class="section-subtitle">Power Transforms</h3>')
+        parts.append(_json_table(power_transforms))
+        if col_data:
+            try:
+                parts.append(_chart_img(plot_power_transform, col_data, power_transforms,
+                                        title="Power Transform Comparison"))
+            except Exception:
+                pass
+    # Jarque-Bera
+    normality = data.get("normality_tests", data.get("jarque_bera", []))
+    if normality:
+        parts.append('<h3 class="section-subtitle">Normality Tests</h3>')
+        parts.append(_json_table(normality))
+        parts.append(_chart_img(plot_jarque_bera, normality,
+                                title="Jarque-Bera Normality Test"))
+    if not parts:
+        parts.append(_section_generic("advanced_distribution", data))
+    return "\n".join(parts)
+
+
+def _section_advanced_correlation(data: dict, df=None) -> str:
+    from f2a.viz.plots import (plot_partial_correlation, plot_mutual_information,
+                                plot_bootstrap_ci, plot_correlation_network,
+                                plot_distance_correlation)
+    parts: list[str] = []
+    # Partial correlation
+    partial = data.get("partial_correlation", [])
+    if partial:
+        parts.append('<h3 class="section-subtitle">Partial Correlation</h3>')
+        parts.append(_json_table(partial))
+        parts.append(_chart_img(plot_partial_correlation, partial,
+                                title="Partial Correlation Heatmap"))
+    # Mutual information
+    mi = data.get("mutual_information", [])
+    if mi:
+        parts.append('<h3 class="section-subtitle">Mutual Information</h3>')
+        parts.append(_json_table(mi))
+        parts.append(_chart_img(plot_mutual_information, mi,
+                                title="Mutual Information Heatmap"))
+    # Bootstrap CI
+    bootstrap = data.get("bootstrap_ci", data.get("bootstrap", []))
+    if bootstrap:
+        parts.append('<h3 class="section-subtitle">Bootstrap Correlation CI</h3>')
+        parts.append(_json_table(bootstrap))
+        parts.append(_chart_img(plot_bootstrap_ci, bootstrap,
+                                title="Bootstrap Correlation CI"))
+    # Correlation network
+    network = data.get("correlation_network", data.get("network", []))
+    if network:
+        parts.append(_chart_img(plot_correlation_network, network,
+                                title="Correlation Network"))
+    # Distance correlation
+    dist_corr = data.get("distance_correlation", [])
+    if dist_corr:
+        parts.append('<h3 class="section-subtitle">Distance Correlation</h3>')
+        parts.append(_json_table(dist_corr))
+        parts.append(_chart_img(plot_distance_correlation, dist_corr,
+                                title="Distance Correlation Heatmap"))
+    if not parts:
+        parts.append(_section_generic("advanced_correlation", data))
+    return "\n".join(parts)
+
+
+def _section_clustering(data: dict, df=None) -> str:
+    from f2a.viz.plots import (plot_elbow_silhouette, plot_cluster_scatter,
+                                plot_dendrogram, plot_cluster_profile)
+    parts: list[str] = []
+    kmeans = data.get("kmeans", {})
+    dbscan = data.get("dbscan", {})
+    # K-means
+    if kmeans:
+        scalars = {k: v for k, v in kmeans.items() if not isinstance(v, (dict, list))}
+        if scalars:
+            parts.append('<h3 class="section-subtitle">K-Means</h3>')
+            parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+        elbow = kmeans.get("elbow_data", [])
+        if elbow:
+            parts.append(_chart_img(plot_elbow_silhouette, elbow,
+                                    title="Elbow & Silhouette"))
+        cluster_sizes = kmeans.get("cluster_sizes", [])
+        labels = kmeans.get("labels", [])
+        if cluster_sizes:
+            parts.append(_chart_img(plot_cluster_profile, cluster_sizes,
+                                    title="Cluster Profiles"))
+        if labels:
+            # Try to get 2D embedding for scatter
+            dimred = data.get("_dimred", {})
+            tsne_emb = None
+            if isinstance(dimred, dict):
+                tsne_emb = dimred.get("tsne", {}).get("embedding", [])
+            parts.append(_chart_img(plot_cluster_scatter, labels, tsne_emb,
+                                    title="Cluster Scatter"))
+            parts.append(_chart_img(plot_dendrogram, labels,
+                                    title="Dendrogram"))
+    # DBSCAN
+    if dbscan:
+        scalars = {k: v for k, v in dbscan.items() if not isinstance(v, (dict, list))}
+        if scalars:
+            parts.append('<h3 class="section-subtitle">DBSCAN</h3>')
+            parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+        db_sizes = dbscan.get("cluster_sizes", [])
+        if db_sizes:
+            parts.append(_chart_img(plot_cluster_profile, db_sizes,
+                                    title="DBSCAN Cluster Sizes"))
+    if not parts:
+        parts.append(_section_generic("clustering", data))
+    return "\n".join(parts)
+
+
+def _section_advanced_dimreduction(data: dict, df=None) -> str:
+    from f2a.viz.plots import (plot_pca_biplot, plot_explained_variance_curve,
+                                plot_factor_loadings, plot_tsne)
+    parts: list[str] = []
+    # PCA biplot
+    feature_contrib = data.get("feature_contributions", [])
+    if feature_contrib:
+        # Build loadings matrix + names from feature contributions
+        feature_names = sorted({d.get("feature", "") for d in feature_contrib})
+        comp_names = sorted({d.get("component", "") for d in feature_contrib})
+        if feature_names and comp_names:
+            loadings_map: dict[str, dict[str, float]] = {}
+            for d in feature_contrib:
+                feat = d.get("feature", "")
+                comp = d.get("component", "")
+                loadings_map.setdefault(feat, {})[comp] = d.get("loading", 0)
+            loadings = [[loadings_map.get(f, {}).get(c, 0) for c in comp_names]
+                        for f in feature_names]
+            var_ratios = data.get("pca_variance_ratio",
+                                  [1.0 / max(len(comp_names), 1)] * len(comp_names))
+            parts.append(_chart_img(plot_pca_biplot, loadings, feature_names,
+                                    var_ratios, title="PCA Biplot"))
+            parts.append(_chart_img(plot_explained_variance_curve,
+                                    var_ratios, list(np.cumsum(var_ratios)),
+                                    title="Explained Variance Curve"))
+    # Factor analysis
+    fa = data.get("factor_analysis", {})
+    if fa:
+        fa_loadings = fa.get("loadings", [])
+        fa_names = fa.get("feature_names", [])
+        n_factors = fa.get("n_factors", 0)
+        if fa_loadings and fa_names:
+            parts.append(_chart_img(plot_factor_loadings, fa_loadings, fa_names,
+                                    n_factors, title="Factor Loadings Heatmap"))
+    # t-SNE
+    tsne_data = data.get("tsne", {})
+    if tsne_data:
+        embedding = tsne_data.get("embedding", [])
+        if embedding:
+            parts.append(_chart_img(plot_tsne, embedding, title="t-SNE Embedding"))
+    if not parts:
+        parts.append(_section_generic("advanced_dimreduction", data))
+    return "\n".join(parts)
+
+
+def _section_advanced_anomaly(data: dict, df=None) -> str:
+    from f2a.viz.plots import plot_anomaly_scatter, plot_consensus_comparison
+    parts: list[str] = []
+    # Individual methods
+    for method_key, method_name in [
+        ("isolation_forest", "Isolation Forest"),
+        ("local_outlier_factor", "Local Outlier Factor"),
+        ("mahalanobis", "Mahalanobis"),
+    ]:
+        method_data = data.get(method_key, {})
+        if method_data:
+            scalars = {k: v for k, v in method_data.items()
+                       if not isinstance(v, (dict, list))}
+            if scalars:
+                parts.append(f'<h3 class="section-subtitle">{method_name}</h3>')
+                parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+            scores = method_data.get("scores", [])
+            labels = method_data.get("labels", [])
+            if scores and labels:
+                parts.append(_chart_img(plot_anomaly_scatter, scores, labels,
+                                        method_name, title=f"Anomaly Scatter ({method_name})"))
+    # Consensus
+    consensus = data.get("consensus", {})
+    if consensus:
+        scalars = {k: v for k, v in consensus.items() if not isinstance(v, (dict, list))}
+        if scalars:
+            parts.append('<h3 class="section-subtitle">Consensus</h3>')
+            parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+    # Consensus comparison chart
+    parts.append(_chart_img(plot_consensus_comparison, data,
+                            title="Consensus Anomaly Comparison"))
+    if not parts:
+        parts.append(_section_generic("advanced_anomaly", data))
+    return "\n".join(parts)
+
+
+def _section_statistical_tests(data: dict, df=None) -> str:
+    parts: list[str] = []
+    for sub_key, sub_val in data.items():
+        title = sub_key.replace("_", " ").title()
+        if isinstance(sub_val, list) and sub_val and isinstance(sub_val[0], dict):
+            parts.append(f'<h3 class="section-subtitle">{_esc(title)}</h3>')
+            parts.append(_json_table(sub_val))
+        elif isinstance(sub_val, dict):
+            scalars = {k: v for k, v in sub_val.items() if not isinstance(v, (dict, list))}
+            if scalars:
+                parts.append(f'<h3 class="section-subtitle">{_esc(title)}</h3>')
+                parts.append('<div class="cards">' + _dict_to_cards(scalars) + "</div>")
+    return "\n".join(parts) if parts else _section_generic("statistical_tests", data)
+
+
+def _section_cross_analysis(data: dict, df=None) -> str:
+    return _section_generic("cross_analysis", data)
+
+
+def _section_column_role(data: dict, df=None) -> str:
+    return _section_generic("column_role", data)
+
+
+def _section_feature_insights(data: dict, df=None) -> str:
+    return _section_generic("feature_insights", data)
 
 
 # =====================================================================
@@ -759,11 +1256,28 @@ _ADVANCED_SECTIONS = [
     ("ml_readiness", "ML Readiness"),
 ]
 
+# All renderers accept (data, df=None)
 _SECTION_RENDERERS: dict[str, Any] = {
     "quality": _section_quality,
     "descriptive": _section_descriptive,
+    "distribution": _section_distribution,
+    "correlation": _section_correlation,
     "missing": _section_missing,
+    "outlier": _section_outlier,
+    "categorical": _section_categorical,
+    "feature_importance": _section_feature_importance,
+    "pca": _section_pca,
+    "duplicates": _section_duplicates,
     "insight_engine": _section_insights,
+    "advanced_distribution": _section_advanced_distribution,
+    "advanced_correlation": _section_advanced_correlation,
+    "clustering": _section_clustering,
+    "advanced_dimreduction": _section_advanced_dimreduction,
+    "advanced_anomaly": _section_advanced_anomaly,
+    "statistical_tests": _section_statistical_tests,
+    "cross_analysis": _section_cross_analysis,
+    "column_role": _section_column_role,
+    "feature_insights": _section_feature_insights,
     "ml_readiness": _section_ml_readiness,
 }
 
@@ -797,6 +1311,7 @@ class ReportGenerator:
         pp = report.preprocessing
         duration = report.analysis_duration_sec
         source = report.source
+        df = getattr(report, "_dataframe", None)
 
         # Basic sections
         basic_parts: list[str] = []
@@ -821,7 +1336,10 @@ class ReportGenerator:
                 continue
             title = t(key, self.lang)
             renderer = _SECTION_RENDERERS.get(key)
-            body = renderer(results[key]) if renderer else _section_generic(key, results[key])
+            if renderer:
+                body = renderer(results[key], df)
+            else:
+                body = _section_generic(key, results[key])
             if body.strip():
                 basic_parts.append(self._wrap_section(key, title, body))
                 nav_ids.append((key, title))
@@ -834,7 +1352,10 @@ class ReportGenerator:
             if key not in results:
                 continue
             renderer = _SECTION_RENDERERS.get(key)
-            body = renderer(results[key]) if renderer else _section_generic(key, results[key])
+            if renderer:
+                body = renderer(results[key], df)
+            else:
+                body = _section_generic(key, results[key])
             if body.strip():
                 adv_tabs.append((key, tab_label, t(key, self.lang), body))
 

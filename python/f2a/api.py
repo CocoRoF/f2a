@@ -110,6 +110,7 @@ class AnalysisReport:
     preprocessing: Optional[dict] = None
     analysis_started_at: str = ""
     analysis_duration_sec: float = 0.0
+    _dataframe: Any = field(default=None, repr=False)  # pandas DataFrame for charts
 
     # ── Console output ───────────────────────────────────────────
 
@@ -263,6 +264,7 @@ def analyze(
     >>> report.to_html("./output")
     """
     import os
+    import pandas as pd
     from f2a.loader import resolve_source
 
     if config is None:
@@ -272,6 +274,12 @@ def analyze(
 
     # Resolve source: converts non-Rust formats to temp parquet
     resolved_path, is_temp = resolve_source(source, **loader_kwargs)
+
+    # Read source data into pandas for chart generation
+    try:
+        df = pd.read_parquet(resolved_path)
+    except Exception:
+        df = None
 
     try:
         start = time.perf_counter()
@@ -294,4 +302,5 @@ def analyze(
         preprocessing=raw.get("preprocessing"),
         analysis_started_at=datetime.now().isoformat(),
         analysis_duration_sec=duration,
+        _dataframe=df,
     )
