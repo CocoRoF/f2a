@@ -2,6 +2,7 @@ use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::core::schema::DataSchema;
+use crate::utils::types::is_analyzable_dtype;
 
 /// Detected preprocessing issues.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -108,6 +109,17 @@ impl Preprocessor {
 
         // ── Build cleaned DataFrame ─────────────────────────────
         let mut cleaned = df.clone();
+
+        // Drop columns with empty names or complex/nested dtypes
+        let complex_cols: Vec<String> = cleaned
+            .get_columns()
+            .iter()
+            .filter(|c| c.name().is_empty() || !is_analyzable_dtype(c.dtype()))
+            .map(|c| c.name().to_string())
+            .collect();
+        for col_name in &complex_cols {
+            let _ = cleaned.drop_in_place(col_name.as_str().into());
+        }
 
         // Drop constant columns
         for col_name in &result.constant_columns {

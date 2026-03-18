@@ -231,15 +231,22 @@ class AnalysisReport:
 def analyze(
     source: str,
     config: Optional[AnalysisConfig] = None,
+    **loader_kwargs: Any,
 ) -> AnalysisReport:
     """Run a full analysis on a data file.
 
     Parameters
     ----------
     source : str
-        Path to a data file (CSV, TSV, Parquet, JSON, JSONL, Feather).
+        Path to a data file, URL, or HuggingFace dataset identifier.
+        Supported formats: CSV, TSV, JSON, JSONL, Parquet, Feather,
+        Excel, ODS, HDF5, SAS, Stata, SPSS, SQLite, DuckDB, XML, HTML,
+        HTTP/HTTPS URLs, HuggingFace (``hf://dataset``).
     config : AnalysisConfig, optional
         Configuration overrides. Defaults to all analyses enabled.
+    **loader_kwargs
+        Additional arguments forwarded to the data loader
+        (e.g. ``split="train"`` for HuggingFace, ``table="users"`` for SQLite).
 
     Returns
     -------
@@ -250,17 +257,32 @@ def analyze(
     --------
     >>> import f2a
     >>> report = f2a.analyze("data.csv")
+    >>> report = f2a.analyze("hf://imdb", split="train")
+    >>> report = f2a.analyze("results.xlsx")
     >>> report.show()
     >>> report.to_html("./output")
     """
+    import os
+    from f2a.loader import resolve_source
+
     if config is None:
         config = AnalysisConfig()
 
     config_json = config.to_json()
 
-    start = time.perf_counter()
-    raw_json = _core.analyze(source, config_json)
-    duration = time.perf_counter() - start
+    # Resolve source: converts non-Rust formats to temp parquet
+    resolved_path, is_temp = resolve_source(source, **loader_kwargs)
+
+    try:
+        start = time.perf_counter()
+        raw_json = _core.analyze(resolved_path, config_json)
+        duration = time.perf_counter() - start
+    finally:
+        if is_temp:
+            try:
+                os.unlink(resolved_path)
+            except OSError:
+                pass
 
     raw = json.loads(raw_json)
 

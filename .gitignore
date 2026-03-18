@@ -15,11 +15,14 @@ build/
 *.so
 *.pyd
 *.pdb
+python_test
 
 # ── Virtual environments ──
 .venv/
 venv/
 env/
+f2a-old
+uv.lock
 
 # ── IDE ──
 .vscode/

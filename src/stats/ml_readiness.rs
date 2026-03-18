@@ -200,13 +200,14 @@ impl<'a> MlReadinessStats<'a> {
         for col_name in self.schema.numeric_columns() {
             if let Ok(col) = self.df.column(col_name) {
                 if let Ok(f) = col.cast(&DataType::Float64) {
-                    let ca = f.f64().unwrap();
-                    let inf_count = ca
-                        .into_iter()
-                        .filter(|v| matches!(v, Some(x) if x.is_infinite()))
-                        .count();
-                    if inf_count > 0 {
-                        issues += 1;
+                    if let Ok(ca) = f.f64() {
+                        let inf_count = ca
+                            .into_iter()
+                            .filter(|v| matches!(v, Some(x) if x.is_infinite()))
+                            .count();
+                        if inf_count > 0 {
+                            issues += 1;
+                        }
                     }
                 }
             }

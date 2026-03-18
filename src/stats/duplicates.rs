@@ -2,6 +2,7 @@ use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::core::schema::DataSchema;
+use crate::utils::types::is_analyzable_dtype;
 
 // ─── Result types ───────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ impl<'a> DuplicateStats<'a> {
             .df
             .get_columns()
             .iter()
+            .filter(|col| !col.name().is_empty() && is_analyzable_dtype(col.dtype()))
             .map(|col| {
                 let n_unique = col.n_unique().unwrap_or(0);
                 let uniqueness_ratio = if n_rows > 0 {

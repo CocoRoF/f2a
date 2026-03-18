@@ -1,7 +1,7 @@
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::utils::types::{infer_column_type, ColumnType};
+use crate::utils::types::{infer_column_type, is_analyzable_dtype, ColumnType};
 
 // ─── Per-column metadata ────────────────────────────────────────────
 
@@ -29,11 +29,14 @@ impl DataSchema {
     /// Build a `DataSchema` from a Polars `DataFrame`.
     pub fn from_dataframe(df: &DataFrame) -> Self {
         let n_rows = df.height();
-        let n_cols = df.width();
 
         let columns: Vec<ColumnInfo> = df
             .get_columns()
             .iter()
+            .filter(|col| {
+                // Skip columns with empty names or complex/nested dtypes
+                !col.name().is_empty() && is_analyzable_dtype(col.dtype())
+            })
             .map(|col| {
                 let name = col.name().to_string();
                 let dtype = format!("{:?}", col.dtype());
@@ -81,7 +84,7 @@ impl DataSchema {
 
         DataSchema {
             n_rows,
-            n_cols,
+            n_cols: columns.len(),
             columns,
             memory_usage_bytes,
         }

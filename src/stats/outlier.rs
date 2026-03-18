@@ -128,7 +128,19 @@ impl<'a> OutlierStats<'a> {
 
         // Apply to all rows (including original null positions)
         let casted = col.cast(&DataType::Float64).unwrap_or_default();
-        let ca = casted.f64().unwrap();
+        let ca = match casted.f64() {
+            Ok(ca) => ca,
+            Err(_) => return (OutlierColumnResult {
+                column: name.to_string(),
+                method: "iqr".to_string(),
+                n_outliers: 0,
+                outlier_ratio: 0.0,
+                lower_bound: lower,
+                upper_bound: upper,
+                n_below: 0,
+                n_above: 0,
+            }, mask),
+        };
         let mut n_below = 0usize;
         let mut n_above = 0usize;
 
@@ -215,7 +227,19 @@ impl<'a> OutlierStats<'a> {
         let upper = mean + self.threshold * std;
 
         let casted = col.cast(&DataType::Float64).unwrap_or_default();
-        let ca = casted.f64().unwrap();
+        let ca = match casted.f64() {
+            Ok(ca) => ca,
+            Err(_) => return (OutlierColumnResult {
+                column: name.to_string(),
+                method: "zscore".to_string(),
+                n_outliers: 0,
+                outlier_ratio: 0.0,
+                lower_bound: lower,
+                upper_bound: upper,
+                n_below: 0,
+                n_above: 0,
+            }, mask),
+        };
         let mut n_below = 0usize;
         let mut n_above = 0usize;
 

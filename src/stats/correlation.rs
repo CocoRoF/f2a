@@ -339,16 +339,28 @@ impl<'a> CorrelationStats<'a> {
     /// Compute Cramér's V between two categorical columns.
     fn cramers_v_pair(&self, col_a: &str, col_b: &str, n: f64) -> f64 {
         let a = match self.df.column(col_a) {
-            Ok(c) => c.cast(&DataType::String).unwrap_or_default(),
+            Ok(c) => match c.cast(&DataType::String) {
+                Ok(casted) => casted,
+                Err(_) => return 0.0,
+            },
             Err(_) => return 0.0,
         };
         let b = match self.df.column(col_b) {
-            Ok(c) => c.cast(&DataType::String).unwrap_or_default(),
+            Ok(c) => match c.cast(&DataType::String) {
+                Ok(casted) => casted,
+                Err(_) => return 0.0,
+            },
             Err(_) => return 0.0,
         };
 
-        let a_str = a.str().unwrap();
-        let b_str = b.str().unwrap();
+        let a_str = match a.str() {
+            Ok(s) => s,
+            Err(_) => return 0.0,
+        };
+        let b_str = match b.str() {
+            Ok(s) => s,
+            Err(_) => return 0.0,
+        };
 
         // Build contingency table
         let mut contingency: IndexMap<(String, String), usize> = IndexMap::new();

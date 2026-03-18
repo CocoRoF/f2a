@@ -375,24 +375,27 @@ impl<'a> InsightEngine<'a> {
         for col_name in self.schema.numeric_columns() {
             if let Ok(col) = self.df.column(col_name) {
                 if let Ok(f) = col.cast(&DataType::Float64) {
-                    let ca = f.f64().unwrap();
-                    let inf_count = ca
-                        .into_iter()
-                        .filter(|v| matches!(v, Some(x) if x.is_infinite()))
-                        .count();
-                    if inf_count > 0 {
-                        out.push(Insight {
-                            insight_type: InsightType::InfiniteValues,
-                            severity: InsightSeverity::Critical,
-                            column: Some(col_name.to_string()),
-                            message: format!(
-                                "Column '{}' contains {} infinite values",
-                                col_name, inf_count
-                            ),
-                            detail: "Infinite values will cause issues with most algorithms".into(),
-                            recommendation:
-                                "Replace infinite values with NaN or clip to a max value".into(),
-                        });
+                    if let Ok(ca) = f.f64() {
+                        let inf_count = ca
+                            .into_iter()
+                            .filter(|v| matches!(v, Some(x) if x.is_infinite()))
+                            .count();
+                        if inf_count > 0 {
+                            out.push(Insight {
+                                insight_type: InsightType::InfiniteValues,
+                                severity: InsightSeverity::Critical,
+                                column: Some(col_name.to_string()),
+                                message: format!(
+                                    "Column '{}' contains {} infinite values",
+                                    col_name, inf_count
+                                ),
+                                detail: "Infinite values will cause issues with most algorithms"
+                                    .into(),
+                                recommendation:
+                                    "Replace infinite values with NaN or clip to a max value"
+                                        .into(),
+                            });
+                        }
                     }
                 }
             }

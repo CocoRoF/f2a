@@ -29,6 +29,33 @@ impl std::fmt::Display for ColumnType {
     }
 }
 
+/// Returns `true` if the Polars dtype can be meaningfully analysed.
+///
+/// Complex / nested types (List, Struct, Array, Binary, Object, Null, Unknown)
+/// are excluded because most statistical routines cannot handle them.
+pub fn is_analyzable_dtype(dtype: &polars::prelude::DataType) -> bool {
+    use polars::prelude::DataType;
+    matches!(
+        dtype,
+        DataType::Boolean
+            | DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64
+            | DataType::String
+            | DataType::Date
+            | DataType::Time
+            | DataType::Datetime(_, _)
+            | DataType::Duration(_)
+    )
+}
+
 /// Infer the semantic `ColumnType` from a Polars dtype and column statistics.
 ///
 /// Heuristics:
